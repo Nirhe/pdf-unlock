@@ -6,6 +6,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
+const docs_routes_1 = __importDefault(require("./routes/docs.routes"));
+const email_routes_1 = __importDefault(require("./routes/email.routes"));
+const qb_routes_1 = __importDefault(require("./routes/qb.routes"));
 const app = (0, express_1.default)();
 // Middleware
 app.use((0, cors_1.default)());
@@ -15,8 +18,8 @@ app.use((0, morgan_1.default)('dev'));
 app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
 });
-// TODO: mount routes here, e.g.
-// import apiRouter from './routes';
-// app.use('/api', apiRouter);
+app.use('/api/docs', docs_routes_1.default);
+app.use('/api/email', email_routes_1.default);
+app.use('/api/qb', qb_routes_1.default);
 exports.default = app;
 //# sourceMappingURL=app.js.map

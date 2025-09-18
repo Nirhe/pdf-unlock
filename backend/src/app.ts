@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import docsRouter from './routes/docs.routes';
+import emailRouter from './routes/email.routes';
+import quickBooksRouter from './routes/qb.routes';
 
 const app = express();
 
@@ -14,8 +17,8 @@ app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// TODO: mount routes here, e.g.
-// import apiRouter from './routes';
-// app.use('/api', apiRouter);
+app.use('/api/docs', docsRouter);
+app.use('/api/email', emailRouter);
+app.use('/api/qb', quickBooksRouter);
 
 export default app;

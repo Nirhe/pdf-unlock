@@ -1,0 +1,104 @@
+export type InvoiceStatus = 'OPEN' | 'PARTIALLY_PAID' | 'PAID';
+
+export interface InvoicePayload {
+  customerId: string;
+  amount: number;
+  memo?: string | undefined;
+}
+
+export interface Invoice {
+  id: string;
+  customerId: string;
+  amount: number;
+  balance: number;
+  status: InvoiceStatus;
+  memo?: string | undefined;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PaymentPayload {
+  invoiceId: string;
+  amount: number;
+  method: string;
+}
+
+export interface Payment {
+  id: string;
+  invoiceId: string;
+  amount: number;
+  method: string;
+  createdAt: Date;
+}
+
+export class QuickBooksError extends Error {}
+
+export class ResourceNotFoundError extends QuickBooksError {}
+
+const invoices = new Map<string, Invoice>();
+const payments = new Map<string, Payment[]>();
+
+function generateId(prefix: string) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+export async function createInvoice(payload: InvoicePayload): Promise<Invoice> {
+  const timestamp = new Date();
+  const invoice: Invoice = {
+    id: generateId('inv'),
+    customerId: payload.customerId,
+    amount: payload.amount,
+    balance: payload.amount,
+    status: 'OPEN',
+    memo: payload.memo,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  invoices.set(invoice.id, invoice);
+  payments.set(invoice.id, []);
+
+  return invoice;
+}
+
+export async function getInvoice(invoiceId: string): Promise<Invoice & { payments: Payment[] }> {
+  const invoice = invoices.get(invoiceId);
+
+  if (!invoice) {
+    throw new ResourceNotFoundError('Invoice not found');
+  }
+
+  const relatedPayments = payments.get(invoiceId) ?? [];
+
+  return {
+    ...invoice,
+    payments: relatedPayments.map((payment) => ({ ...payment })),
+  };
+}
+
+export async function recordPayment(payload: PaymentPayload): Promise<{ invoice: Invoice; payment: Payment }> {
+  const invoice = invoices.get(payload.invoiceId);
+
+  if (!invoice) {
+    throw new ResourceNotFoundError('Invoice not found');
+  }
+
+  const payment: Payment = {
+    id: generateId('pay'),
+    invoiceId: payload.invoiceId,
+    amount: payload.amount,
+    method: payload.method,
+    createdAt: new Date(),
+  };
+
+  const invoicePayments = payments.get(payload.invoiceId) ?? [];
+  invoicePayments.push(payment);
+  payments.set(payload.invoiceId, invoicePayments);
+
+  const paidTotal = invoicePayments.reduce((total, entry) => total + entry.amount, 0);
+  invoice.balance = Math.max(invoice.amount - paidTotal, 0);
+  invoice.status = invoice.balance === 0 ? 'PAID' : 'PARTIALLY_PAID';
+  invoice.updatedAt = new Date();
+
+  return { invoice: { ...invoice }, payment };
+}
