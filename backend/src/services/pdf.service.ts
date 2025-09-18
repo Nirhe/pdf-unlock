@@ -2,6 +2,8 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 
+const fileSystem = fs.promises;
+
 export async function lockPdf(inputPath: string, outputPath: string, password: string) {
   return new Promise<void>((resolve, reject) => {
     const doc = new PDFDocument({
@@ -20,4 +22,9 @@ export async function lockPdf(inputPath: string, outputPath: string, password: s
     stream.on('finish', () => resolve());
     stream.on('error', reject);
   });
+}
+
+export async function unlockPdf(inputPath: string, outputPath: string) {
+  await fileSystem.access(inputPath);
+  await fileSystem.copyFile(inputPath, outputPath);
 }

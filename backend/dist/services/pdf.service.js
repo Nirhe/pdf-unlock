@@ -4,9 +4,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.lockPdf = lockPdf;
+exports.unlockPdf = unlockPdf;
 // src/services/pdf.service.ts
 const pdfkit_1 = __importDefault(require("pdfkit"));
 const fs_1 = __importDefault(require("fs"));
+const fileSystem = fs_1.default.promises;
 async function lockPdf(inputPath, outputPath, password) {
     return new Promise((resolve, reject) => {
         const doc = new pdfkit_1.default({
@@ -23,5 +25,9 @@ async function lockPdf(inputPath, outputPath, password) {
         stream.on('finish', () => resolve());
         stream.on('error', reject);
     });
+}
+async function unlockPdf(inputPath, outputPath) {
+    await fileSystem.access(inputPath);
+    await fileSystem.copyFile(inputPath, outputPath);
 }
 //# sourceMappingURL=pdf.service.js.map
