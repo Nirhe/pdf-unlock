@@ -9,14 +9,20 @@ const path_1 = __importDefault(require("path"));
 const zod_1 = require("zod");
 const pdf_service_1 = require("../services/pdf.service");
 const router = (0, express_1.Router)();
+const pdfPathSchema = zod_1.z
+    .string()
+    .min(1)
+    .refine((value) => path_1.default.extname(value).toLowerCase() === '.pdf', {
+    message: 'Only PDF documents are supported',
+});
 const lockSchema = zod_1.z.object({
-    inputPath: zod_1.z.string().min(1),
+    inputPath: pdfPathSchema,
     password: zod_1.z.string().min(1),
-    outputPath: zod_1.z.string().optional(),
+    outputPath: pdfPathSchema.optional(),
 });
 const unlockSchema = zod_1.z.object({
-    inputPath: zod_1.z.string().min(1),
-    outputPath: zod_1.z.string().optional(),
+    inputPath: pdfPathSchema,
+    outputPath: pdfPathSchema.optional(),
 });
 function deriveOutputPath(inputPath, suffix) {
     const ext = path_1.default.extname(inputPath) || '.pdf';
