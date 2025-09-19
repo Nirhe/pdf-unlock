@@ -24,7 +24,8 @@ describe('parseServerErrorMessage', () => {
 
   it('returns null for invalid JSON payloads', () => {
     assert.equal(parseServerErrorMessage('{ invalid'), null)
-
+  })
+})
 
 describe('createReviewAndSendFormData', () => {
   it('packages the document and customer ID as expected by the API', () => {
