@@ -58,6 +58,7 @@ const CustomerDropdown = ({
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1)
   const [selectedCustomer, setSelectedCustomer] = useState<QuickBooksCustomer | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const baseId = useId()
   const inputId = `${baseId}-input`
@@ -191,6 +192,31 @@ const CustomerDropdown = ({
     selectedCustomer,
   ])
 
+  const updateCustomValidity = useCallback(
+    (customer: QuickBooksCustomer | null) => {
+      if (!inputRef.current) {
+        return
+      }
+
+      if (disabled || !required) {
+        inputRef.current.setCustomValidity('')
+        return
+      }
+
+      if (customer) {
+        inputRef.current.setCustomValidity('')
+        return
+      }
+
+      inputRef.current.setCustomValidity('Please select a customer from the list.')
+    },
+    [disabled, required],
+  )
+
+  useEffect(() => {
+    updateCustomValidity(selectedCustomer)
+  }, [selectedCustomer, updateCustomValidity])
+
   const handleSelect = useCallback(
     (customer: QuickBooksCustomer) => {
       setSelectedCustomer(customer)
@@ -198,9 +224,10 @@ const CustomerDropdown = ({
       setUserEdited(false)
       setIsOpen(false)
       setHighlightedIndex(-1)
+      updateCustomValidity(customer)
       onSelect?.(customer)
     },
-    [formatCustomer, onSelect],
+    [formatCustomer, onSelect, updateCustomValidity],
   )
 
   const handleInputFocus = useCallback(() => {
@@ -229,8 +256,10 @@ const CustomerDropdown = ({
         setSelectedCustomer(null)
         onSelect?.(null)
       }
+
+      updateCustomValidity(null)
     },
-    [onSelect, selectedCustomer],
+    [onSelect, selectedCustomer, updateCustomValidity],
   )
 
   const handleInputKeyDown = useCallback(
@@ -359,10 +388,12 @@ const CustomerDropdown = ({
           aria-describedby={describedBy}
           value={inputValue}
           placeholder={placeholder}
+          required={required}
           className={combineClassNames(
             'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:bg-slate-100',
             error || requestErrorMessage ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : null,
           )}
+          ref={inputRef}
           onFocus={handleInputFocus}
           onBlur={handleInputBlur}
           onChange={handleInputChange}
