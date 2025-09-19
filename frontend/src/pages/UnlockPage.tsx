@@ -3,9 +3,11 @@ import PageSection from '../components/ui/PageSection'
 import Surface from '../components/ui/Surface'
 import CustomerDropdown from '../components/CustomerDropdown'
 import type { QuickBooksCustomer } from '../api'
+import PdfUploader from '../components/PdfUploader'
 
 const UnlockPage: FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<QuickBooksCustomer | null>(null)
+  const [selectedPdf, setSelectedPdf] = useState<File | null>(null)
 
   return (
     <PageSection aria-labelledby="unlock-title">
@@ -19,14 +21,21 @@ const UnlockPage: FC = () => {
         </p>
       </Surface>
 
-      <Surface
-        aria-live="polite"
-        role="status"
-        className="grid gap-4 border-dashed border-blue-500/40 bg-gradient-to-br from-blue-500/15 via-blue-400/5 to-blue-300/5"
-      >
-        <p className="text-lg leading-relaxed text-slate-600">
-          The unlocking form is on its way. In the meantime, review the preparation checklist below so you are ready when the
-          uploader arrives.
+      <Surface className="grid gap-5">
+        <div className="grid gap-2">
+          <h2 className="text-xl font-semibold text-slate-900" id="pdf-upload-title">
+            Upload your restricted PDF
+          </h2>
+          <p className="text-base leading-relaxed text-slate-600">
+            Drag and drop your locked document into the area below or browse to choose a file. We currently accept PDF files
+            with the <strong>.pdf</strong> extension only.
+          </p>
+        </div>
+        <PdfUploader ariaLabelledBy="pdf-upload-title" onFileChange={setSelectedPdf} />
+        <p className="text-sm text-slate-600" aria-live="polite">
+          {selectedPdf
+            ? `Ready to unlock ${selectedPdf.name}. Upload a different PDF to replace it.`
+            : 'No PDF uploaded yet. Select a file to begin.'}
         </p>
       </Surface>
 
