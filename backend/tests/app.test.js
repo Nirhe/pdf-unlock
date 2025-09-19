@@ -151,6 +151,16 @@ test('rejects non-PDF input when unlocking a document', async () => {
   }
 });
 
+test('rejects JSON payload when uploading a document', async () => {
+  const { response, body } = await requestJson('/api/docs/send', {
+    method: 'POST',
+    body: JSON.stringify({ customerId: 'cust-123' }),
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(body, { error: 'Unsupported content type' });
+});
+
 test('uploads a document for sending and returns payment link', async () => {
   const formData = new FormData();
   formData.set('customerId', 'cust-123');
