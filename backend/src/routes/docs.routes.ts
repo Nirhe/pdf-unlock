@@ -9,6 +9,7 @@ import {
   handleDocumentSubmission,
   type UploadedDocument,
 } from '../services/document.service';
+import { createInvoice } from '../services/qb.service';
 
 const router = Router();
 
@@ -319,11 +320,22 @@ router.post('/send', async (req, res) => {
       });
     }
 
-    const result = await handleDocumentSubmission(customerId, file);
+    const submission = await handleDocumentSubmission(customerId, file);
+    const invoice = await createInvoice({
+      customerId,
+      amount: submission.invoice.amount,
+      memo: submission.invoice.memo,
+    });
 
     res.status(200).json({
       message: 'Document sent successfully',
-      paymentLink: result.paymentLink,
+      paymentLink: submission.paymentLink,
+      invoice: {
+        id: invoice.id,
+        amount: invoice.amount,
+        balance: invoice.balance,
+        status: invoice.status,
+      },
     });
   } catch (error) {
     if (error instanceof MultipartParsingError) {

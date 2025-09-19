@@ -2,9 +2,15 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 
+export interface DocumentInvoiceDetails {
+  amount: number;
+  memo: string;
+}
+
 export interface DocumentSubmissionResult {
   storedPath: string;
   paymentLink: string;
+  invoice: DocumentInvoiceDetails;
 }
 
 export interface UploadedDocument {
@@ -29,6 +35,23 @@ function generateStoragePath(customerId: string, originalName: string, timestamp
     .toLowerCase() || 'document';
 
   return path.join(os.tmpdir(), `${customerId}-${timestamp}-${baseName}${ext}`);
+}
+
+const DEFAULT_INVOICE_AMOUNT = 125;
+
+function generateInvoiceMemo(originalName: string) {
+  const ext = path.extname(originalName).toLowerCase() || '.pdf';
+  const baseName = path
+    .basename(originalName, ext)
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!baseName) {
+    return 'PDF unlock service';
+  }
+
+  return `PDF unlock service for ${baseName}`;
 }
 
 export async function handleDocumentSubmission(
@@ -62,6 +85,13 @@ export async function handleDocumentSubmission(
 
   const paymentLink = `https://payments.example.com/checkout/${customerId}-${timestamp}`;
 
-  return { storedPath: storagePath, paymentLink };
+  return {
+    storedPath: storagePath,
+    paymentLink,
+    invoice: {
+      amount: DEFAULT_INVOICE_AMOUNT,
+      memo: generateInvoiceMemo(file.originalName),
+    },
+  };
 }
 
