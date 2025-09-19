@@ -4,10 +4,91 @@ import Surface from '../components/ui/Surface'
 import CustomerDropdown from '../components/CustomerDropdown'
 import type { QuickBooksCustomer } from '../api'
 import PdfUploader from '../components/PdfUploader'
+import Button from '../components/ui/Button'
 
 const UnlockPage: FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<QuickBooksCustomer | null>(null)
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null)
+  const [isSending, setIsSending] = useState(false)
+  const [paymentLink, setPaymentLink] = useState<string | null>(null)
+  const [sendError, setSendError] = useState<string | null>(null)
+
+  const handleReviewAndSend = async () => {
+    if (!selectedCustomer || !selectedPdf || isSending) {
+      return
+    }
+
+    setIsSending(true)
+    setPaymentLink(null)
+    setSendError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', selectedPdf)
+      formData.append('customerId', selectedCustomer.qbId)
+
+      const response = await fetch('/api/docs/send', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const rawBody = await response.text()
+
+      if (!response.ok) {
+        let errorMessage = `Request failed with status ${response.status}`
+
+        try {
+          const errorData = rawBody ? JSON.parse(rawBody) : null
+          if (
+            errorData &&
+            typeof errorData === 'object' &&
+            'message' in errorData &&
+            typeof (errorData as { message?: unknown }).message === 'string'
+          ) {
+            errorMessage = (errorData as { message: string }).message
+          } else if (rawBody) {
+            errorMessage = rawBody
+          }
+        } catch {
+          if (rawBody) {
+            errorMessage = rawBody
+          }
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      let data: unknown = null
+      if (rawBody) {
+        try {
+          data = JSON.parse(rawBody)
+        } catch {
+          throw new Error('Received an invalid response from the server.')
+        }
+      }
+
+      const paymentLinkValue =
+        data &&
+        typeof data === 'object' &&
+        'paymentLink' in data &&
+        typeof (data as { paymentLink?: unknown }).paymentLink === 'string'
+          ? (data as { paymentLink: string }).paymentLink
+          : null
+
+      if (!paymentLinkValue) {
+        throw new Error('The server response did not include a payment link.')
+      }
+
+      setPaymentLink(paymentLinkValue)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to send the document.'
+      setSendError(message)
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  const isReadyToSend = Boolean(selectedCustomer && selectedPdf)
 
   return (
     <PageSection aria-labelledby="unlock-title">
@@ -79,6 +160,43 @@ const UnlockPage: FC = () => {
           </p>
         </Surface>
       </div>
+
+      <Surface className="grid gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Button
+            type="button"
+            onClick={handleReviewAndSend}
+            disabled={!isReadyToSend || isSending}
+          >
+            {isSending ? 'Sending…' : 'Review & Send'}
+          </Button>
+          <p className="text-sm text-slate-600" aria-live="polite">
+            {isReadyToSend
+              ? 'We will create an invoice email with payment details once you send the document.'
+              : 'Select a PDF and customer to enable sending.'}
+          </p>
+        </div>
+        <div aria-live="polite" aria-atomic="true" className="grid gap-2">
+          {paymentLink ? (
+            <p className="text-sm font-semibold text-emerald-700" role="status">
+              Invoice ready! Share the payment link with your customer:{' '}
+              <a
+                href={paymentLink}
+                target="_blank"
+                rel="noreferrer"
+                className="underline hover:text-emerald-600"
+              >
+                {paymentLink}
+              </a>
+            </p>
+          ) : null}
+          {sendError ? (
+            <p className="text-sm font-semibold text-red-600" role="alert">
+              {sendError}
+            </p>
+          ) : null}
+        </div>
+      </Surface>
     </PageSection>
   )
 }
