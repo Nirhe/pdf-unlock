@@ -5,6 +5,7 @@ import CustomerDropdown from '../components/CustomerDropdown'
 import type { QuickBooksCustomer } from '../api'
 import PdfUploader from '../components/PdfUploader'
 import Button from '../components/ui/Button'
+import { parseServerErrorMessage } from '../utils/parseServerErrorMessage'
 
 const UnlockPage: FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<QuickBooksCustomer | null>(null)
@@ -37,22 +38,12 @@ const UnlockPage: FC = () => {
       if (!response.ok) {
         let errorMessage = `Request failed with status ${response.status}`
 
-        try {
-          const errorData = rawBody ? JSON.parse(rawBody) : null
-          if (
-            errorData &&
-            typeof errorData === 'object' &&
-            'message' in errorData &&
-            typeof (errorData as { message?: unknown }).message === 'string'
-          ) {
-            errorMessage = (errorData as { message: string }).message
-          } else if (rawBody) {
-            errorMessage = rawBody
-          }
-        } catch {
-          if (rawBody) {
-            errorMessage = rawBody
-          }
+        const parsedError = parseServerErrorMessage(rawBody)
+
+        if (parsedError) {
+          errorMessage = parsedError
+        } else if (rawBody) {
+          errorMessage = rawBody
         }
 
         throw new Error(errorMessage)
