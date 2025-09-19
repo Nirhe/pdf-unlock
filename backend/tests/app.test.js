@@ -3,6 +3,7 @@ const { after, before, test } = require('node:test');
 const os = require('os');
 const path = require('path');
 const fs = require('fs/promises');
+const { Blob } = require('node:buffer');
 
 const app = require('../dist/app').default;
 
@@ -44,6 +45,16 @@ async function requestJson(endpoint, options) {
       'Content-Type': 'application/json',
       ...(options.headers ?? {}),
     },
+  });
+
+  const body = await response.json();
+  return { response, body };
+}
+
+async function requestMultipart(endpoint, formData) {
+  const response = await fetch(`${baseUrl}${endpoint}`, {
+    method: 'POST',
+    body: formData,
   });
 
   const body = await response.json();
@@ -137,6 +148,67 @@ test('rejects non-PDF input when unlocking a document', async () => {
     assert.equal(body.error, 'Invalid request payload');
   } finally {
     await fs.unlink(inputPath).catch(() => {});
+  }
+});
+
+test('uploads a document for sending and returns payment link', async () => {
+  const formData = new FormData();
+  formData.set('customerId', 'cust-123');
+  formData.append(
+    'document',
+    new Blob(['%PDF-1.4 test document'], { type: 'application/pdf' }),
+    'sample.pdf'
+  );
+
+  const { response, body } = await requestMultipart('/api/docs/send', formData);
+
+  assert.equal(response.status, 200);
+  assert.equal(body.message, 'Document sent successfully');
+  assert.match(body.paymentLink, /^https:\/\/payments\.example\.com\//);
+});
+
+test('validates customerId when uploading a document', async () => {
+  const formData = new FormData();
+  formData.append(
+    'document',
+    new Blob(['%PDF-1.4 test document'], { type: 'application/pdf' }),
+    'sample.pdf'
+  );
+
+  const { response, body } = await requestMultipart('/api/docs/send', formData);
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error, 'Invalid request payload');
+});
+
+test('rejects upload without a document file', async () => {
+  const formData = new FormData();
+  formData.set('customerId', 'cust-999');
+
+  const { response, body } = await requestMultipart('/api/docs/send', formData);
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error, 'Document file is required');
+});
+
+test('handles downstream errors when uploading a document', async () => {
+  process.env.DOCUMENT_SERVICE_FAIL_CUSTOMER_ID = 'cust-failure';
+
+  try {
+    const formData = new FormData();
+    formData.set('customerId', 'cust-failure');
+    formData.append(
+      'document',
+      new Blob(['%PDF-1.4 test document'], { type: 'application/pdf' }),
+      'sample.pdf'
+    );
+
+    const { response, body } = await requestMultipart('/api/docs/send', formData);
+
+    assert.equal(response.status, 502);
+    assert.equal(body.error, 'Failed to generate payment link');
+  } finally {
+    delete process.env.DOCUMENT_SERVICE_FAIL_CUSTOMER_ID;
   }
 });
 

@@ -1,8 +1,14 @@
 import { Router } from 'express';
+import type { Request } from 'express';
 import os from 'os';
 import path from 'path';
 import { z } from 'zod';
 import { lockPdf, unlockPdf } from '../services/pdf.service';
+import {
+  DocumentProcessingError,
+  handleDocumentSubmission,
+  type UploadedDocument,
+} from '../services/document.service';
 
 const router = Router();
 
@@ -23,6 +29,158 @@ const unlockSchema = z.object({
   inputPath: pdfPathSchema,
   outputPath: pdfPathSchema.optional(),
 });
+
+const sendSchema = z.object({
+  customerId: z.string().trim().min(1, { message: 'Customer ID is required' }),
+});
+
+const MULTIPART_SIZE_LIMIT = 10 * 1024 * 1024; // 10MB
+
+class MultipartParsingError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = 'MultipartParsingError';
+    this.status = status;
+  }
+}
+
+async function readRequestBody(req: Request): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+
+  await new Promise<void>((resolve, reject) => {
+    req.on('data', (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > MULTIPART_SIZE_LIMIT) {
+        reject(new MultipartParsingError('Uploaded file is too large'));
+        req.destroy();
+        return;
+      }
+
+      chunks.push(chunk);
+    });
+
+    req.once('end', () => resolve());
+    req.once('error', (error) => reject(error));
+  });
+
+  return Buffer.concat(chunks);
+}
+
+function extractBoundary(contentType?: string | null) {
+  if (!contentType || !contentType.startsWith('multipart/form-data')) {
+    throw new MultipartParsingError('Unsupported content type');
+  }
+
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+
+  if (!boundaryMatch) {
+    throw new MultipartParsingError('Invalid multipart boundary');
+  }
+
+  return boundaryMatch[1] ?? boundaryMatch[2];
+}
+
+interface ParsedMultipart {
+  fields: Record<string, string>;
+  files: Record<string, UploadedDocument>;
+}
+
+function parsePart(part: string): { headers: Record<string, string>; body: string } | undefined {
+  let segment = part;
+
+  if (!segment) {
+    return undefined;
+  }
+
+  if (segment.startsWith('\r\n')) {
+    segment = segment.slice(2);
+  }
+
+  if (segment.endsWith('\r\n')) {
+    segment = segment.slice(0, -2);
+  }
+
+  if (!segment || segment === '--') {
+    return undefined;
+  }
+
+  const headerEnd = segment.indexOf('\r\n\r\n');
+  if (headerEnd === -1) {
+    return undefined;
+  }
+
+  const rawHeaders = segment.slice(0, headerEnd).split('\r\n');
+  const headers: Record<string, string> = {};
+
+  for (const line of rawHeaders) {
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim().toLowerCase();
+    const value = line.slice(separatorIndex + 1).trim();
+    headers[key] = value;
+  }
+
+  let body = segment.slice(headerEnd + 4);
+  if (body.endsWith('\r\n')) {
+    body = body.slice(0, -2);
+  }
+
+  return { headers, body };
+}
+
+async function parseMultipartForm(req: Request): Promise<ParsedMultipart> {
+  const boundary = extractBoundary(req.headers['content-type']);
+  const rawBody = await readRequestBody(req);
+  const boundaryMarker = `--${boundary}`;
+  const binaryBody = rawBody.toString('binary');
+  const segments = binaryBody.split(boundaryMarker);
+
+  const fields: Record<string, string> = {};
+  const files: Record<string, UploadedDocument> = {};
+
+  for (const segment of segments) {
+    const part = parsePart(segment);
+    if (!part) {
+      continue;
+    }
+
+    const disposition = part.headers['content-disposition'];
+    if (!disposition) {
+      continue;
+    }
+
+    const nameMatch = disposition.match(/name="?([^";]+)"?/i);
+    if (!nameMatch) {
+      continue;
+    }
+
+    const fieldName = nameMatch[1];
+    if (!fieldName) {
+      continue;
+    }
+    const filenameMatch = disposition.match(/filename="?([^";]*)"?/i);
+
+    if (filenameMatch && filenameMatch[1]) {
+      const mimeType = part.headers['content-type'] ?? 'application/octet-stream';
+
+      files[fieldName] = {
+        originalName: filenameMatch[1],
+        mimeType,
+        buffer: Buffer.from(part.body, 'binary'),
+      };
+    } else {
+      fields[fieldName] = Buffer.from(part.body, 'binary').toString('utf8');
+    }
+  }
+
+  return { fields, files };
+}
 
 function deriveOutputPath(inputPath: string, suffix: string) {
   const ext = path.extname(inputPath) || '.pdf';
@@ -82,6 +240,62 @@ router.post('/unlock', async (req, res) => {
 
     return res.status(500).json({
       error: 'Unable to unlock document',
+    });
+  }
+});
+
+router.post('/send', async (req, res) => {
+  try {
+    const { fields, files } = await parseMultipartForm(req);
+    const { customerId } = sendSchema.parse(fields);
+
+    const file = files.document;
+    if (!file) {
+      return res.status(400).json({
+        error: 'Document file is required',
+      });
+    }
+
+    if (path.extname(file.originalName).toLowerCase() !== '.pdf') {
+      return res.status(400).json({
+        error: 'Only PDF documents are supported',
+      });
+    }
+
+    if (file.mimeType !== 'application/pdf') {
+      return res.status(400).json({
+        error: 'Only PDF documents are supported',
+      });
+    }
+
+    const result = await handleDocumentSubmission(customerId, file);
+
+    res.status(200).json({
+      message: 'Document sent successfully',
+      paymentLink: result.paymentLink,
+    });
+  } catch (error) {
+    if (error instanceof MultipartParsingError) {
+      return res.status(error.status).json({
+        error: error.message,
+      });
+    }
+
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: 'Invalid request payload',
+        details: error.issues,
+      });
+    }
+
+    if (error instanceof DocumentProcessingError) {
+      return res.status(502).json({
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      error: 'Unable to send document',
     });
   }
 });
