@@ -191,6 +191,21 @@ test('rejects upload without a document file', async () => {
   assert.equal(body.error, 'Document file is required');
 });
 
+test('rejects document upload that exceeds size limit', async () => {
+  const formData = new FormData();
+  formData.set('customerId', 'cust-oversized');
+  formData.append(
+    'document',
+    new Blob([Buffer.alloc(10 * 1024 * 1024 + 1)], { type: 'application/pdf' }),
+    'oversized.pdf'
+  );
+
+  const { response, body } = await requestMultipart('/api/docs/send', formData);
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error, 'Uploaded file is too large');
+});
+
 test('handles downstream errors when uploading a document', async () => {
   process.env.DOCUMENT_SERVICE_FAIL_CUSTOMER_ID = 'cust-failure';
 

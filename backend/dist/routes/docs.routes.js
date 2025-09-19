@@ -40,18 +40,60 @@ class MultipartParsingError extends Error {
 async function readRequestBody(req) {
     const chunks = [];
     let total = 0;
+    const contentLengthHeader = req.headers['content-length'];
+    if (contentLengthHeader) {
+        const contentLength = Array.isArray(contentLengthHeader)
+            ? Number(contentLengthHeader[0])
+            : Number(contentLengthHeader);
+        if (!Number.isNaN(contentLength) && contentLength > MULTIPART_SIZE_LIMIT) {
+            throw new MultipartParsingError('Uploaded file is too large');
+        }
+    }
     await new Promise((resolve, reject) => {
-        req.on('data', (chunk) => {
+        let settled = false;
+        const fail = (error) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            cleanup();
+            reject(error);
+        };
+        const succeed = () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            cleanup();
+            resolve();
+        };
+        function cleanup() {
+            req.off('data', onData);
+            req.off('end', onEnd);
+            req.off('error', onError);
+            req.off('aborted', onAborted);
+        }
+        function onData(chunk) {
             total += chunk.length;
             if (total > MULTIPART_SIZE_LIMIT) {
-                reject(new MultipartParsingError('Uploaded file is too large'));
-                req.destroy();
+                fail(new MultipartParsingError('Uploaded file is too large'));
                 return;
             }
             chunks.push(chunk);
-        });
-        req.once('end', () => resolve());
-        req.once('error', (error) => reject(error));
+        }
+        function onEnd() {
+            succeed();
+        }
+        function onError(error) {
+            fail(error);
+        }
+        function onAborted() {
+            fail(new MultipartParsingError('Request aborted'));
+        }
+        req.on('data', onData);
+        req.once('end', onEnd);
+        req.once('error', onError);
+        req.once('aborted', onAborted);
     });
     return Buffer.concat(chunks);
 }
