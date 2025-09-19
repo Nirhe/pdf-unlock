@@ -6,6 +6,7 @@ const fs = require('fs/promises');
 const { Blob } = require('node:buffer');
 
 const app = require('../dist/app').default;
+const qbService = require('../dist/services/qb.service');
 
 let server;
 let baseUrl;
@@ -256,6 +257,40 @@ test('validates email payload', async () => {
 
   assert.equal(response.status, 400);
   assert.equal(body.error, 'Invalid request payload');
+});
+
+test('lists QuickBooks customers', async () => {
+  qbService.__setCustomersForTesting([
+    { id: 'cust-test-1', qbId: 'QB-TEST-1', name: 'Beta Industries', email: 'billing@beta.test' },
+    { id: 'cust-test-2', qbId: 'QB-TEST-2', name: 'Alpha Holdings', email: 'ap@alpha.test' },
+  ]);
+
+  try {
+    const { response, body } = await requestJson('/api/qb/customers', { method: 'GET' });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body, {
+      customers: [
+        { id: 'cust-test-2', qbId: 'QB-TEST-2', name: 'Alpha Holdings', email: 'ap@alpha.test' },
+        { id: 'cust-test-1', qbId: 'QB-TEST-1', name: 'Beta Industries', email: 'billing@beta.test' },
+      ],
+    });
+  } finally {
+    qbService.__setCustomersForTesting();
+  }
+});
+
+test('returns an empty list when no QuickBooks customers are available', async () => {
+  qbService.__setCustomersForTesting([]);
+
+  try {
+    const { response, body } = await requestJson('/api/qb/customers', { method: 'GET' });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body, { customers: [] });
+  } finally {
+    qbService.__setCustomersForTesting();
+  }
 });
 
 test('creates an invoice and records payment', async () => {

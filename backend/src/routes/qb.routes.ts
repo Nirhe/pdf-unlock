@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createInvoice, getInvoice, recordPayment, ResourceNotFoundError } from '../services/qb.service';
+import {
+  createInvoice,
+  getInvoice,
+  listCustomers,
+  recordPayment,
+  ResourceNotFoundError,
+} from '../services/qb.service';
 
 const router = Router();
 
@@ -35,6 +41,18 @@ router.post('/invoices', async (req, res) => {
 
     return res.status(500).json({
       error: 'Unable to sync invoice with QuickBooks',
+    });
+  }
+});
+
+router.get('/customers', async (_req, res) => {
+  try {
+    const customers = await listCustomers();
+
+    return res.status(200).json({ customers });
+  } catch (_error) {
+    return res.status(500).json({
+      error: 'Unable to fetch customers from QuickBooks',
     });
   }
 });
