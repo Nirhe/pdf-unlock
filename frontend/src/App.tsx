@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { useEffect, useMemo } from 'react'
-import './App.css'
 import { useHashRouter } from './hooks/useHashRouter'
 import AboutPage from './pages/AboutPage'
 import HomePage from './pages/HomePage'
@@ -40,26 +39,39 @@ function App() {
     <NotFoundPage onNavigateHome={() => navigate('/')} />
   )
   const currentYear = new Date().getFullYear()
+  const navLinkBase =
+    'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium transition duration-150 hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-300 md:px-5'
 
   return (
-    <div className="app-shell">
-      <a className="skip-link" href="#main-content">
+    <div className="relative flex min-h-screen flex-col bg-gradient-to-b from-slate-200 via-slate-50 to-white text-slate-900">
+      <a
+        className="absolute left-4 top-4 -translate-x-[120%] -translate-y-[120%] rounded-full bg-blue-600 px-4 py-2 font-semibold text-slate-50 shadow-lg shadow-blue-600/40 transition-transform duration-150 focus-visible:translate-x-0 focus-visible:translate-y-0 focus-visible:outline-none"
+        href="#main-content"
+      >
         Skip to main content
       </a>
-      <header className="app-header">
-        <a className="brand" href="#/" aria-label="PDF Unlock home">
-          <span className="brand-icon" aria-hidden="true">
+      <header className="sticky top-0 z-50 flex flex-wrap items-center justify-between gap-6 bg-slate-900/95 px-6 py-4 text-slate-50 shadow-lg shadow-slate-900/30 backdrop-blur sm:px-10">
+        <a
+          className="inline-flex items-center gap-2 text-lg font-semibold uppercase tracking-[0.12em] text-slate-50 transition-transform duration-150 hover:-translate-y-0.5"
+          href="#/"
+          aria-label="PDF Unlock home"
+        >
+          <span className="text-2xl" aria-hidden="true">
             🔓
           </span>
-          <span className="brand-label">PDF Unlock</span>
+          <span className="hidden text-sm tracking-[0.3em] sm:inline">PDF Unlock</span>
         </a>
-        <nav className="app-nav" aria-label="Primary">
-          <ul className="nav-list">
+        <nav className="ml-auto" aria-label="Primary">
+          <ul className="flex flex-wrap items-center gap-3">
             {routes.map((route) => (
               <li key={route.path}>
                 <a
                   href={`#${route.path}`}
-                  className={`nav-link${path === route.path ? ' nav-link-active' : ''}`}
+                  className={`${navLinkBase} ${
+                    path === route.path
+                      ? 'bg-slate-50/20 text-white shadow-floating'
+                      : 'text-slate-200 hover:bg-slate-50/10 hover:text-white'
+                  }`}
                   aria-current={path === route.path ? 'page' : undefined}
                 >
                   {route.label}
@@ -69,10 +81,14 @@ function App() {
           </ul>
         </nav>
       </header>
-      <main className="app-main" id="main-content" tabIndex={-1}>
-        {mainContent}
+      <main
+        className="flex flex-1 justify-center px-4 py-12 sm:px-8 lg:px-12"
+        id="main-content"
+        tabIndex={-1}
+      >
+        <div className="w-full max-w-5xl">{mainContent}</div>
       </main>
-      <footer className="app-footer">
+      <footer className="border-t border-slate-200/60 bg-white/80 px-4 py-6 text-center text-sm text-slate-500 shadow-inner sm:px-8 lg:px-12">
         <p>© {currentYear} PDF Unlock. All rights reserved.</p>
       </footer>
     </div>
