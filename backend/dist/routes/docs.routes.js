@@ -8,6 +8,7 @@ const os_1 = __importDefault(require("os"));
 const path_1 = __importDefault(require("path"));
 const zod_1 = require("zod");
 const pdf_service_1 = require("../services/pdf.service");
+const document_service_1 = require("../services/document.service");
 const router = (0, express_1.Router)();
 const pdfPathSchema = zod_1.z
     .string()
@@ -24,6 +25,121 @@ const unlockSchema = zod_1.z.object({
     inputPath: pdfPathSchema,
     outputPath: pdfPathSchema.optional(),
 });
+const sendSchema = zod_1.z.object({
+    customerId: zod_1.z.string().trim().min(1, { message: 'Customer ID is required' }),
+});
+const MULTIPART_SIZE_LIMIT = 10 * 1024 * 1024; // 10MB
+class MultipartParsingError extends Error {
+    status;
+    constructor(message, status = 400) {
+        super(message);
+        this.name = 'MultipartParsingError';
+        this.status = status;
+    }
+}
+async function readRequestBody(req) {
+    const chunks = [];
+    let total = 0;
+    await new Promise((resolve, reject) => {
+        req.on('data', (chunk) => {
+            total += chunk.length;
+            if (total > MULTIPART_SIZE_LIMIT) {
+                reject(new MultipartParsingError('Uploaded file is too large'));
+                req.destroy();
+                return;
+            }
+            chunks.push(chunk);
+        });
+        req.once('end', () => resolve());
+        req.once('error', (error) => reject(error));
+    });
+    return Buffer.concat(chunks);
+}
+function extractBoundary(contentType) {
+    if (!contentType || !contentType.startsWith('multipart/form-data')) {
+        throw new MultipartParsingError('Unsupported content type');
+    }
+    const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+    if (!boundaryMatch) {
+        throw new MultipartParsingError('Invalid multipart boundary');
+    }
+    return boundaryMatch[1] ?? boundaryMatch[2];
+}
+function parsePart(part) {
+    let segment = part;
+    if (!segment) {
+        return undefined;
+    }
+    if (segment.startsWith('\r\n')) {
+        segment = segment.slice(2);
+    }
+    if (segment.endsWith('\r\n')) {
+        segment = segment.slice(0, -2);
+    }
+    if (!segment || segment === '--') {
+        return undefined;
+    }
+    const headerEnd = segment.indexOf('\r\n\r\n');
+    if (headerEnd === -1) {
+        return undefined;
+    }
+    const rawHeaders = segment.slice(0, headerEnd).split('\r\n');
+    const headers = {};
+    for (const line of rawHeaders) {
+        const separatorIndex = line.indexOf(':');
+        if (separatorIndex === -1) {
+            continue;
+        }
+        const key = line.slice(0, separatorIndex).trim().toLowerCase();
+        const value = line.slice(separatorIndex + 1).trim();
+        headers[key] = value;
+    }
+    let body = segment.slice(headerEnd + 4);
+    if (body.endsWith('\r\n')) {
+        body = body.slice(0, -2);
+    }
+    return { headers, body };
+}
+async function parseMultipartForm(req) {
+    const boundary = extractBoundary(req.headers['content-type']);
+    const rawBody = await readRequestBody(req);
+    const boundaryMarker = `--${boundary}`;
+    const binaryBody = rawBody.toString('binary');
+    const segments = binaryBody.split(boundaryMarker);
+    const fields = {};
+    const files = {};
+    for (const segment of segments) {
+        const part = parsePart(segment);
+        if (!part) {
+            continue;
+        }
+        const disposition = part.headers['content-disposition'];
+        if (!disposition) {
+            continue;
+        }
+        const nameMatch = disposition.match(/name="?([^";]+)"?/i);
+        if (!nameMatch) {
+            continue;
+        }
+        const fieldName = nameMatch[1];
+        if (!fieldName) {
+            continue;
+        }
+        const filenameMatch = disposition.match(/filename="?([^";]*)"?/i);
+        if (filenameMatch && filenameMatch[1]) {
+            const mimeType = part.headers['content-type'] ?? 'application/octet-stream';
+            files[fieldName] = {
+                originalName: filenameMatch[1],
+                mimeType,
+                buffer: Buffer.from(part.body, 'binary'),
+            };
+        }
+        else {
+            fields[fieldName] = Buffer.from(part.body, 'binary').toString('utf8');
+        }
+    }
+    return { fields, files };
+}
 function deriveOutputPath(inputPath, suffix) {
     const ext = path_1.default.extname(inputPath) || '.pdf';
     const base = path_1.default.basename(inputPath, ext) || 'document';
@@ -75,6 +191,54 @@ router.post('/unlock', async (req, res) => {
         }
         return res.status(500).json({
             error: 'Unable to unlock document',
+        });
+    }
+});
+router.post('/send', async (req, res) => {
+    try {
+        const { fields, files } = await parseMultipartForm(req);
+        const { customerId } = sendSchema.parse(fields);
+        const file = files.document;
+        if (!file) {
+            return res.status(400).json({
+                error: 'Document file is required',
+            });
+        }
+        if (path_1.default.extname(file.originalName).toLowerCase() !== '.pdf') {
+            return res.status(400).json({
+                error: 'Only PDF documents are supported',
+            });
+        }
+        if (file.mimeType !== 'application/pdf') {
+            return res.status(400).json({
+                error: 'Only PDF documents are supported',
+            });
+        }
+        const result = await (0, document_service_1.handleDocumentSubmission)(customerId, file);
+        res.status(200).json({
+            message: 'Document sent successfully',
+            paymentLink: result.paymentLink,
+        });
+    }
+    catch (error) {
+        if (error instanceof MultipartParsingError) {
+            return res.status(error.status).json({
+                error: error.message,
+            });
+        }
+        if (error instanceof zod_1.z.ZodError) {
+            return res.status(400).json({
+                error: 'Invalid request payload',
+                details: error.issues,
+            });
+        }
+        if (error instanceof document_service_1.DocumentProcessingError) {
+            return res.status(502).json({
+                error: error.message,
+            });
+        }
+        return res.status(500).json({
+            error: 'Unable to send document',
         });
     }
 });
