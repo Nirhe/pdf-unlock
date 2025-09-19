@@ -1,12 +1,12 @@
-export { ApiProvider, type ApiProviderProps } from './ApiProvider'
-export { useApiContext, useInvalidateQuery, type ApiContextValue } from './context'
-export { createApiClient, type CreateApiClientOptions } from './client'
+export { ApiProvider, type ApiProviderProps } from './ApiProvider.js'
+export { useApiContext, useInvalidateQuery, type ApiContextValue } from './context.js'
+export { createApiClient, type CreateApiClientOptions } from './client.js'
 export {
   useApiQuery,
   DEFAULT_STALE_TIME,
   type UseApiQueryOptions,
   type UseApiQueryResult,
-} from './useApiQuery'
+} from './useApiQuery.js'
 export {
   apiStateReducer,
   serializeQueryKey,
@@ -15,4 +15,15 @@ export {
   type ApiState,
   type ApiStatus,
   type QueryKey,
-} from './state'
+} from './state.js'
+export {
+  useQuickBooksCustomersQuery,
+  normalizeQuickBooksCustomersResponse,
+  QUICKBOOKS_CUSTOMERS_QUERY_KEY,
+  QUICKBOOKS_CUSTOMERS_STALE_TIME,
+  type QuickBooksCustomer,
+  type QuickBooksCustomersResponse,
+  type QuickBooksCustomersEnvelope,
+  type RawQuickBooksCustomer,
+  type UseQuickBooksCustomersQueryOptions,
+} from './qb.js'

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import type { AxiosInstance } from 'axios'
-import { useApiContext } from './context'
-import type { ApiStatus, QueryKey } from './state'
-import { serializeQueryKey } from './state'
+import { useApiContext } from './context.js'
+import type { ApiStatus, QueryKey } from './state.js'
+import { serializeQueryKey } from './state.js'
 
 export const DEFAULT_STALE_TIME = 30_000
 
