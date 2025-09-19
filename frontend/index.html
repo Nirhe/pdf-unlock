@@ -4,9 +4,34 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <title>PDF Unlock</title>
+    <script>
+      window.tailwind = window.tailwind || {}
+      window.tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: [
+                'Inter',
+                'Segoe UI',
+                'system-ui',
+                '-apple-system',
+                'BlinkMacSystemFont',
+                'Helvetica Neue',
+                'Arial',
+                'sans-serif',
+              ],
+            },
+            boxShadow: {
+              floating: '0 24px 48px rgba(15, 23, 42, 0.08)',
+            },
+          },
+        },
+      }
+    </script>
+    <script src="https://cdn.tailwindcss.com" defer></script>
   </head>
-  <body>
+  <body class="bg-slate-100">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
