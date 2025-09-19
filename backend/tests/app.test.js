@@ -77,6 +77,23 @@ test('returns 400 when lock payload invalid', async () => {
   assert.equal(body.error, 'Invalid request payload');
 });
 
+test('rejects non-PDF input when locking a document', async () => {
+  const inputPath = path.join(os.tmpdir(), `sample-${Date.now()}.txt`);
+  await fs.writeFile(inputPath, 'dummy');
+
+  try {
+    const { response, body } = await requestJson('/api/docs/lock', {
+      method: 'POST',
+      body: JSON.stringify({ inputPath, password: 'secret' }),
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(body.error, 'Invalid request payload');
+  } finally {
+    await fs.unlink(inputPath).catch(() => {});
+  }
+});
+
 test('unlocks a document', async () => {
   const lockedPath = path.join(os.tmpdir(), `locked-${Date.now()}.pdf`);
   await fs.writeFile(lockedPath, 'locked-content');
@@ -104,6 +121,23 @@ test('returns 404 when unlocking missing document', async () => {
 
   assert.equal(response.status, 404);
   assert.equal(body.error, 'Document not found');
+});
+
+test('rejects non-PDF input when unlocking a document', async () => {
+  const inputPath = path.join(os.tmpdir(), `locked-${Date.now()}.txt`);
+  await fs.writeFile(inputPath, 'locked-content');
+
+  try {
+    const { response, body } = await requestJson('/api/docs/unlock', {
+      method: 'POST',
+      body: JSON.stringify({ inputPath }),
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(body.error, 'Invalid request payload');
+  } finally {
+    await fs.unlink(inputPath).catch(() => {});
+  }
 });
 
 test('sends a notification email', async () => {

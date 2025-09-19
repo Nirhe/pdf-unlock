@@ -6,15 +6,22 @@ import { lockPdf, unlockPdf } from '../services/pdf.service';
 
 const router = Router();
 
+const pdfPathSchema = z
+  .string()
+  .min(1)
+  .refine((value) => path.extname(value).toLowerCase() === '.pdf', {
+    message: 'Only PDF documents are supported',
+  });
+
 const lockSchema = z.object({
-  inputPath: z.string().min(1),
+  inputPath: pdfPathSchema,
   password: z.string().min(1),
-  outputPath: z.string().optional(),
+  outputPath: pdfPathSchema.optional(),
 });
 
 const unlockSchema = z.object({
-  inputPath: z.string().min(1),
-  outputPath: z.string().optional(),
+  inputPath: pdfPathSchema,
+  outputPath: pdfPathSchema.optional(),
 });
 
 function deriveOutputPath(inputPath: string, suffix: string) {
