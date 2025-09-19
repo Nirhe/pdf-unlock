@@ -40,6 +40,7 @@ const UnlockPage: FC = () => {
           label="Select a customer"
           placeholder="Start typing a customer name or email…"
           helperText="Customers sync from QuickBooks automatically. Narrow the search to find the right match quickly."
+          required
           name="qbCustomerId"
           onSelect={setSelectedCustomer}
         />
