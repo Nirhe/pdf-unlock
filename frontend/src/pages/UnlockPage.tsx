@@ -169,17 +169,15 @@ const UnlockPage: FC = () => {
         </div>
         <div aria-live="polite" aria-atomic="true" className="grid gap-2">
           {paymentLink ? (
-            <p className="text-sm font-semibold text-emerald-700" role="status">
-              Invoice ready! Share the payment link with your customer:{' '}
-              <a
-                href={paymentLink}
-                target="_blank"
-                rel="noreferrer"
-                className="underline hover:text-emerald-600"
-              >
-                {paymentLink}
-              </a>
-            </p>
+            <div
+              className="flex flex-wrap items-center gap-3 text-sm font-semibold text-emerald-700"
+              role="status"
+            >
+              <span>Invoice ready! Share the payment link with your customer.</span>
+              <Button as="a" href={paymentLink} target="_blank" rel="noreferrer">
+                Pay Now
+              </Button>
+            </div>
           ) : null}
           {sendError ? (
             <p className="text-sm font-semibold text-red-600" role="alert">
