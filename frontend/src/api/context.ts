@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext } from 'react'
 import type { AxiosInstance } from 'axios'
-import { serializeQueryKey, type ApiState, type QueryKey } from './state'
+import { serializeQueryKey, type ApiState, type QueryKey } from './state.js'
 
 export type ApiContextValue = {
   client: AxiosInstance

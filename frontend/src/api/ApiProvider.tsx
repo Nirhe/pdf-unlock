@@ -1,8 +1,8 @@
 import type { FC, ReactNode } from 'react'
 import { useCallback, useMemo, useReducer } from 'react'
-import { createApiClient, type CreateApiClientOptions } from './client'
-import { ApiContext, type ApiContextValue } from './context'
-import { apiStateReducer } from './state'
+import { createApiClient, type CreateApiClientOptions } from './client.js'
+import { ApiContext, type ApiContextValue } from './context.js'
+import { apiStateReducer } from './state.js'
 
 export type ApiProviderProps = {
   children: ReactNode
