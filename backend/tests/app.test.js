@@ -176,6 +176,12 @@ test('uploads a document for sending and returns payment link', async () => {
   assert.equal(response.status, 200);
   assert.equal(body.message, 'Document sent successfully');
   assert.match(body.paymentLink, /^https:\/\/payments\.example\.com\//);
+  assert.ok(body.invoice);
+  assert.equal(typeof body.invoice.id, 'string');
+  assert.notEqual(body.invoice.id.length, 0);
+  assert.equal(body.invoice.amount, 125);
+  assert.equal(body.invoice.balance, 125);
+  assert.equal(body.invoice.status, 'OPEN');
 });
 
 test('validates customerId when uploading a document', async () => {
