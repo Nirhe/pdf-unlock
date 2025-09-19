@@ -1,4 +1,4 @@
-import { useState, type FC } from 'react'
+import { useEffect, useState, type FC } from 'react'
 import PageSection from '../components/ui/PageSection'
 import Surface from '../components/ui/Surface'
 import CustomerDropdown from '../components/CustomerDropdown'
@@ -7,13 +7,18 @@ import PdfUploader from '../components/PdfUploader'
 import Button from '../components/ui/Button'
 import { parseServerErrorMessage } from '../utils/parseServerErrorMessage'
 import { createReviewAndSendFormData } from './createReviewAndSendFormData'
+import { startInvoiceStatusPolling } from './startInvoiceStatusPolling'
 
+const INVOICE_STATUS_POLL_INTERVAL_MS = 5000
+const INVOICE_STATUS_TIMEOUT_MS = 2 * 60 * 1000
 
 const UnlockPage: FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<QuickBooksCustomer | null>(null)
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
+  const [invoiceId, setInvoiceId] = useState<string | null>(null)
+  const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
 
   const handleReviewAndSend = async () => {
@@ -23,6 +28,8 @@ const UnlockPage: FC = () => {
 
     setIsSending(true)
     setPaymentLink(null)
+    setInvoiceId(null)
+    setInvoiceStatus(null)
     setSendError(null)
 
     try {
@@ -66,18 +73,110 @@ const UnlockPage: FC = () => {
           ? (data as { paymentLink: string }).paymentLink
           : null
 
+      const invoiceIdValue =
+        data &&
+        typeof data === 'object' &&
+        'invoiceId' in data &&
+        typeof (data as { invoiceId?: unknown }).invoiceId === 'string'
+          ? (data as { invoiceId: string }).invoiceId
+          : null
+
       if (!paymentLinkValue) {
         throw new Error('The server response did not include a payment link.')
       }
 
+      if (!invoiceIdValue) {
+        throw new Error('The server response did not include an invoice ID.')
+      }
+
       setPaymentLink(paymentLinkValue)
+      setInvoiceId(invoiceIdValue)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to send the document.'
       setSendError(message)
+      setInvoiceId(null)
+      setInvoiceStatus(null)
     } finally {
       setIsSending(false)
     }
   }
+
+  useEffect(() => {
+    if (!invoiceId) {
+      return
+    }
+
+    setInvoiceStatus('PENDING')
+
+    const stopPolling = startInvoiceStatusPolling({
+      intervalMs: INVOICE_STATUS_POLL_INTERVAL_MS,
+      timeoutMs: INVOICE_STATUS_TIMEOUT_MS,
+      fetchStatus: async (signal) => {
+        const response = await fetch(`/api/qb/invoices/${invoiceId}`, { signal })
+        const rawBody = await response.text()
+
+        if (!response.ok) {
+          let errorMessage = `Request failed with status ${response.status}`
+
+          const parsedError = parseServerErrorMessage(rawBody)
+
+          if (parsedError) {
+            errorMessage = parsedError
+          } else if (rawBody) {
+            errorMessage = rawBody
+          }
+
+          throw new Error(errorMessage)
+        }
+
+        if (!rawBody) {
+          throw new Error('The server response did not include an invoice status.')
+        }
+
+        let data: unknown = null
+        try {
+          data = JSON.parse(rawBody)
+        } catch {
+          throw new Error('Received an invalid response while checking the invoice status.')
+        }
+
+        const statusValue =
+          data &&
+          typeof data === 'object' &&
+          'status' in data &&
+          typeof (data as { status?: unknown }).status === 'string'
+            ? (data as { status: string }).status
+            : null
+
+        if (!statusValue) {
+          throw new Error('The server response did not include an invoice status.')
+        }
+
+        return statusValue
+      },
+      onStatus: (status) => {
+        const normalizedStatus = status.toUpperCase()
+
+        if (normalizedStatus === 'PAID') {
+          setInvoiceStatus('PAID')
+          return
+        }
+
+        setInvoiceStatus(status)
+      },
+      onError: (error) => {
+        const message =
+          error instanceof Error ? error.message : 'Unable to fetch the invoice status.'
+
+        setInvoiceStatus(null)
+        setSendError(message)
+      },
+    })
+
+    return () => {
+      stopPolling()
+    }
+  }, [invoiceId])
 
   const isReadyToSend = Boolean(selectedCustomer && selectedPdf)
 
@@ -178,6 +277,16 @@ const UnlockPage: FC = () => {
                 Pay Now
               </Button>
             </div>
+          ) : null}
+          {invoiceStatus && invoiceStatus !== 'PAID' ? (
+            <p className="text-sm font-medium text-slate-700" role="status">
+              Waiting for payment…
+            </p>
+          ) : null}
+          {invoiceStatus === 'PAID' ? (
+            <p className="text-sm font-semibold text-emerald-700" role="status">
+              Payment received! We will begin unlocking your document shortly.
+            </p>
           ) : null}
           {sendError ? (
             <p className="text-sm font-semibold text-red-600" role="alert">
