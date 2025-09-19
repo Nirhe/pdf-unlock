@@ -30,6 +30,17 @@ export declare class QuickBooksError extends Error {
 }
 export declare class ResourceNotFoundError extends QuickBooksError {
 }
+export interface QuickBooksCustomer {
+    id: string;
+    qbId: string;
+    name: string;
+    email: string;
+}
+type QuickBooksCustomerSeed = QuickBooksCustomer | (Omit<QuickBooksCustomer, 'id'> & {
+    id?: string;
+});
+export declare function listCustomers(): Promise<QuickBooksCustomer[]>;
+export declare function __setCustomersForTesting(entries?: QuickBooksCustomerSeed[]): void;
 export declare function createInvoice(payload: InvoicePayload): Promise<Invoice>;
 export declare function getInvoice(invoiceId: string): Promise<Invoice & {
     payments: Payment[];
@@ -38,4 +49,5 @@ export declare function recordPayment(payload: PaymentPayload): Promise<{
     invoice: Invoice;
     payment: Payment;
 }>;
+export {};
 //# sourceMappingURL=qb.service.d.ts.map

@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ResourceNotFoundError = exports.QuickBooksError = void 0;
+exports.listCustomers = listCustomers;
+exports.__setCustomersForTesting = __setCustomersForTesting;
 exports.createInvoice = createInvoice;
 exports.getInvoice = getInvoice;
 exports.recordPayment = recordPayment;
@@ -12,8 +14,54 @@ class ResourceNotFoundError extends QuickBooksError {
 exports.ResourceNotFoundError = ResourceNotFoundError;
 const invoices = new Map();
 const payments = new Map();
+const customers = new Map();
+const defaultCustomers = [
+    { id: 'cust-001', qbId: 'QB-001', name: 'Acme Corporation', email: 'billing@acme.test' },
+    { id: 'cust-002', qbId: 'QB-002', name: 'Globex Corporation', email: 'accounts@globex.test' },
+    { id: 'cust-003', qbId: 'QB-003', name: 'Initech', email: 'finance@initech.test' },
+    { id: 'cust-004', qbId: 'QB-004', name: 'Stark Industries', email: 'billing@starkindustries.test' },
+    { id: 'cust-005', qbId: 'QB-005', name: 'Wayne Enterprises', email: 'ap@wayneenterprises.test' },
+];
+function normalizeCustomerSeed(seed) {
+    const qbId = seed.qbId?.trim();
+    const name = seed.name?.trim();
+    const email = seed.email?.trim();
+    if (!qbId || !name || !email) {
+        return null;
+    }
+    const id = typeof seed.id === 'string' && seed.id.trim() ? seed.id.trim() : qbId;
+    return {
+        id,
+        qbId,
+        name,
+        email,
+    };
+}
+function seedCustomers(entries) {
+    customers.clear();
+    for (const entry of entries) {
+        const customer = normalizeCustomerSeed(entry);
+        if (!customer) {
+            continue;
+        }
+        customers.set(customer.qbId, customer);
+    }
+}
+seedCustomers(defaultCustomers);
 function generateId(prefix) {
     return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+}
+async function listCustomers() {
+    return Array.from(customers.values())
+        .map((customer) => ({ ...customer }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+function __setCustomersForTesting(entries) {
+    if (!entries) {
+        seedCustomers(defaultCustomers);
+        return;
+    }
+    seedCustomers(entries);
 }
 async function createInvoice(payload) {
     const timestamp = new Date();
