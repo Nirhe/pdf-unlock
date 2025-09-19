@@ -35,11 +35,79 @@ export class QuickBooksError extends Error {}
 
 export class ResourceNotFoundError extends QuickBooksError {}
 
+export interface QuickBooksCustomer {
+  id: string;
+  qbId: string;
+  name: string;
+  email: string;
+}
+
+type QuickBooksCustomerSeed = QuickBooksCustomer | (Omit<QuickBooksCustomer, 'id'> & { id?: string });
+
 const invoices = new Map<string, Invoice>();
 const payments = new Map<string, Payment[]>();
+const customers = new Map<string, QuickBooksCustomer>();
+
+const defaultCustomers: QuickBooksCustomerSeed[] = [
+  { id: 'cust-001', qbId: 'QB-001', name: 'Acme Corporation', email: 'billing@acme.test' },
+  { id: 'cust-002', qbId: 'QB-002', name: 'Globex Corporation', email: 'accounts@globex.test' },
+  { id: 'cust-003', qbId: 'QB-003', name: 'Initech', email: 'finance@initech.test' },
+  { id: 'cust-004', qbId: 'QB-004', name: 'Stark Industries', email: 'billing@starkindustries.test' },
+  { id: 'cust-005', qbId: 'QB-005', name: 'Wayne Enterprises', email: 'ap@wayneenterprises.test' },
+];
+
+function normalizeCustomerSeed(seed: QuickBooksCustomerSeed): QuickBooksCustomer | null {
+  const qbId = seed.qbId?.trim();
+  const name = seed.name?.trim();
+  const email = seed.email?.trim();
+
+  if (!qbId || !name || !email) {
+    return null;
+  }
+
+  const id = typeof seed.id === 'string' && seed.id.trim() ? seed.id.trim() : qbId;
+
+  return {
+    id,
+    qbId,
+    name,
+    email,
+  };
+}
+
+function seedCustomers(entries: QuickBooksCustomerSeed[]): void {
+  customers.clear();
+
+  for (const entry of entries) {
+    const customer = normalizeCustomerSeed(entry);
+
+    if (!customer) {
+      continue;
+    }
+
+    customers.set(customer.qbId, customer);
+  }
+}
+
+seedCustomers(defaultCustomers);
 
 function generateId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+export async function listCustomers(): Promise<QuickBooksCustomer[]> {
+  return Array.from(customers.values())
+    .map((customer) => ({ ...customer }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function __setCustomersForTesting(entries?: QuickBooksCustomerSeed[]): void {
+  if (!entries) {
+    seedCustomers(defaultCustomers);
+    return;
+  }
+
+  seedCustomers(entries);
 }
 
 export async function createInvoice(payload: InvoicePayload): Promise<Invoice> {

@@ -35,6 +35,17 @@ router.post('/invoices', async (req, res) => {
         });
     }
 });
+router.get('/customers', async (_req, res) => {
+    try {
+        const customers = await (0, qb_service_1.listCustomers)();
+        return res.status(200).json({ customers });
+    }
+    catch (_error) {
+        return res.status(500).json({
+            error: 'Unable to fetch customers from QuickBooks',
+        });
+    }
+});
 router.get('/invoices/:invoiceId', async (req, res) => {
     try {
         const invoice = await (0, qb_service_1.getInvoice)(req.params.invoiceId);

@@ -6,6 +6,8 @@ import type { QuickBooksCustomer } from '../api'
 import PdfUploader from '../components/PdfUploader'
 import Button from '../components/ui/Button'
 import { parseServerErrorMessage } from '../utils/parseServerErrorMessage'
+import { createReviewAndSendFormData } from './createReviewAndSendFormData'
+
 
 const UnlockPage: FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<QuickBooksCustomer | null>(null)
@@ -24,9 +26,7 @@ const UnlockPage: FC = () => {
     setSendError(null)
 
     try {
-      const formData = new FormData()
-      formData.append('file', selectedPdf)
-      formData.append('customerId', selectedCustomer.qbId)
+      const formData = createReviewAndSendFormData(selectedPdf, selectedCustomer.qbId)
 
       const response = await fetch('/api/docs/send', {
         method: 'POST',
