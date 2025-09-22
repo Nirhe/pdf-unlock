@@ -24,6 +24,19 @@ function generateStoragePath(customerId, originalName, timestamp) {
         .toLowerCase() || 'document';
     return path_1.default.join(os_1.default.tmpdir(), `${customerId}-${timestamp}-${baseName}${ext}`);
 }
+const DEFAULT_INVOICE_AMOUNT = 125;
+function generateInvoiceMemo(originalName) {
+    const ext = path_1.default.extname(originalName).toLowerCase() || '.pdf';
+    const baseName = path_1.default
+        .basename(originalName, ext)
+        .replace(/[^a-zA-Z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!baseName) {
+        return 'PDF unlock service';
+    }
+    return `PDF unlock service for ${baseName}`;
+}
 async function handleDocumentSubmission(customerId, file) {
     if (!file || !file.buffer) {
         throw new DocumentProcessingError('Uploaded document is invalid');
@@ -46,6 +59,13 @@ async function handleDocumentSubmission(customerId, file) {
         throw new DocumentProcessingError('Failed to generate payment link');
     }
     const paymentLink = `https://payments.example.com/checkout/${customerId}-${timestamp}`;
-    return { storedPath: storagePath, paymentLink };
+    return {
+        storedPath: storagePath,
+        paymentLink,
+        invoice: {
+            amount: DEFAULT_INVOICE_AMOUNT,
+            memo: generateInvoiceMemo(file.originalName),
+        },
+    };
 }
 //# sourceMappingURL=document.service.js.map

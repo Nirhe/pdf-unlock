@@ -4,6 +4,8 @@ import morgan from 'morgan';
 import docsRouter from './routes/docs.routes';
 import emailRouter from './routes/email.routes';
 import quickBooksRouter from './routes/qb.routes';
+import swaggerUi from 'swagger-ui-express';
+import { openapiSpec } from './swagger';
 
 const app = express();
 
@@ -16,6 +18,12 @@ app.use(morgan('dev'));
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
+
+// OpenAPI JSON and Swagger UI
+app.get('/openapi.json', (_req, res) => {
+  res.json(openapiSpec);
+});
+app.use('/swagger', swaggerUi.serve, swaggerUi.setup(openapiSpec));
 
 app.use('/api/docs', docsRouter);
 app.use('/api/email', emailRouter);

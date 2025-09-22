@@ -1,6 +1,11 @@
+export interface DocumentInvoiceDetails {
+    amount: number;
+    memo: string;
+}
 export interface DocumentSubmissionResult {
     storedPath: string;
     paymentLink: string;
+    invoice: DocumentInvoiceDetails;
 }
 export interface UploadedDocument {
     originalName: string;

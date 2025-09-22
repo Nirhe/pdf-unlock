@@ -9,6 +9,7 @@ const path_1 = __importDefault(require("path"));
 const zod_1 = require("zod");
 const pdf_service_1 = require("../services/pdf.service");
 const document_service_1 = require("../services/document.service");
+const qb_service_1 = require("../services/qb.service");
 const router = (0, express_1.Router)();
 const pdfPathSchema = zod_1.z
     .string()
@@ -256,10 +257,21 @@ router.post('/send', async (req, res) => {
                 error: 'Only PDF documents are supported',
             });
         }
-        const result = await (0, document_service_1.handleDocumentSubmission)(customerId, file);
+        const submission = await (0, document_service_1.handleDocumentSubmission)(customerId, file);
+        const invoice = await (0, qb_service_1.createInvoice)({
+            customerId,
+            amount: submission.invoice.amount,
+            memo: submission.invoice.memo,
+        });
         res.status(200).json({
             message: 'Document sent successfully',
-            paymentLink: result.paymentLink,
+            paymentLink: submission.paymentLink,
+            invoice: {
+                id: invoice.id,
+                amount: invoice.amount,
+                balance: invoice.balance,
+                status: invoice.status,
+            },
         });
     }
     catch (error) {
