@@ -63,7 +63,12 @@ describe('normalizePath', () => {
   })
 
   it('ensures the path includes a leading slash', () => {
-    assert.equal(normalizePath('unlock'), '/unlock')
+    assert.equal(normalizePath('lock'), '/lock')
+  })
+
+  it('maps the legacy unlock route to the lock route', () => {
+    assert.equal(normalizePath('unlock'), '/lock')
+    assert.equal(normalizePath('#/unlock'), '/lock')
   })
 
   it('removes leading hash fragments', () => {
@@ -82,10 +87,10 @@ describe('getHashPath', () => {
   })
 
   it('normalizes the current hash from the window', () => {
-    const mockWindow = createMockWindow('#/unlock')
+    const mockWindow = createMockWindow('#/lock')
     globalThis.window = mockWindow
 
-    assert.equal(getHashPath(), '/unlock')
+    assert.equal(getHashPath(), '/lock')
   })
 })
 
@@ -103,9 +108,19 @@ describe('applyHashNavigation', () => {
   })
 
   it('normalizes and updates the hash location', () => {
-    applyHashNavigation('unlock')
+    applyHashNavigation('lock')
 
-    assert.equal(mockWindow.getHash(), '#/unlock')
+    assert.equal(mockWindow.getHash(), '#/lock')
+    assert.equal(mockWindow.getWriteCount(), 1)
+  })
+
+  it('redirects legacy unlock hashes to the lock route', () => {
+    mockWindow.location.hash = '#/unlock'
+    mockWindow.resetWriteCount()
+
+    applyHashNavigation('/unlock')
+
+    assert.equal(mockWindow.getHash(), '#/lock')
     assert.equal(mockWindow.getWriteCount(), 1)
   })
 

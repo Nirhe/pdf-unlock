@@ -1,16 +1,30 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 
+const ensureLeadingSlash = (value: string): string => {
+  if (value.startsWith('/')) {
+    return value
+  }
+
+  return `/${value}`
+}
+
+const canonicalizePath = (value: string): string => {
+  const withSlash = ensureLeadingSlash(value)
+
+  if (withSlash === '/unlock') {
+    return '/lock'
+  }
+
+  return withSlash
+}
+
 export const normalizePath = (path: string): string => {
   if (!path) {
     return '/'
   }
 
   const sanitized = path.startsWith('#') ? path.slice(1) : path
-  if (!sanitized.startsWith('/')) {
-    return `/${sanitized}`
-  }
-
-  return sanitized
+  return canonicalizePath(sanitized)
 }
 
 export const getHashPath = (): string => {
@@ -19,6 +33,21 @@ export const getHashPath = (): string => {
   }
 
   return normalizePath(window.location.hash)
+}
+
+const getRawHashPath = (): string => {
+  if (typeof window === 'undefined') {
+    return '/'
+  }
+
+  const hash = window.location.hash ?? ''
+  const value = hash.startsWith('#') ? hash.slice(1) : hash
+
+  if (!value) {
+    return '/'
+  }
+
+  return ensureLeadingSlash(value)
 }
 
 export const subscribeToHashChanges = (onChange: () => void): (() => void) => {
@@ -40,7 +69,11 @@ export const applyHashNavigation = (nextPath: string): void => {
   }
 
   const normalized = normalizePath(nextPath)
-  if (normalizePath(window.location.hash) === normalized) {
+  const currentHash = window.location.hash ?? ''
+  const currentValue = currentHash.startsWith('#') ? currentHash.slice(1) : currentHash
+  const currentNormalized = normalizePath(currentValue)
+
+  if (currentNormalized === normalized && ensureLeadingSlash(currentValue) === normalized) {
     return
   }
 
@@ -55,6 +88,11 @@ export const useHashRouter = () => {
     getHashPath,
     getServerPath,
   )
+  const rawPath = useSyncExternalStore(
+    subscribeToHashChanges,
+    getRawHashPath,
+    getServerPath,
+  )
 
   const navigate = useCallback((nextPath: string) => {
     applyHashNavigation(nextPath)
@@ -63,8 +101,9 @@ export const useHashRouter = () => {
   return useMemo(
     () => ({
       path,
+      rawPath,
       navigate,
     }),
-    [path, navigate],
+    [path, rawPath, navigate],
   )
 }
