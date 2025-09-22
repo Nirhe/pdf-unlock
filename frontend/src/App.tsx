@@ -14,12 +14,12 @@ type RouteDefinition = {
 
 const routes: RouteDefinition[] = [
   { path: '/', label: 'Home', element: <HomePage /> },
-  { path: '/unlock', label: 'Lock', element: <LockPage /> },
+  { path: '/lock', label: 'Lock', element: <LockPage /> },
   { path: '/about', label: 'About', element: <AboutPage /> },
 ]
 
 function App() {
-  const { path, navigate } = useHashRouter()
+  const { path, rawPath, navigate } = useHashRouter()
 
   const activeRoute = useMemo(
     () => routes.find((route) => route.path === path),
@@ -27,12 +27,18 @@ function App() {
   )
 
   useEffect(() => {
+    if (rawPath === '/unlock') {
+      navigate('/lock')
+    }
+  }, [rawPath, navigate])
+
+  useEffect(() => {
     if (typeof document === 'undefined') {
       return
     }
 
     const pageLabel = activeRoute?.label ?? 'Not found'
-    document.title = `${pageLabel} | PDF Unlock`
+    document.title = `${pageLabel} | PDF Lock`
   }, [activeRoute])
 
   const mainContent = activeRoute?.element ?? (
@@ -54,12 +60,12 @@ function App() {
         <a
           className="inline-flex items-center gap-2 text-lg font-semibold uppercase tracking-[0.12em] text-slate-50 transition-transform duration-150 hover:-translate-y-0.5"
           href="#/"
-          aria-label="PDF Unlock home"
+          aria-label="PDF Lock home"
         >
           <span className="text-2xl" aria-hidden="true">
-            🔓
+            🔒
           </span>
-          <span className="hidden text-sm tracking-[0.3em] sm:inline">PDF Unlock</span>
+          <span className="hidden text-sm tracking-[0.3em] sm:inline">PDF Lock</span>
         </a>
         <nav className="ml-auto" aria-label="Primary">
           <ul className="flex flex-wrap items-center gap-3">
@@ -89,7 +95,7 @@ function App() {
         <div className="w-full max-w-5xl">{mainContent}</div>
       </main>
       <footer className="border-t border-slate-200/60 bg-white/80 px-4 py-6 text-center text-sm text-slate-500 shadow-inner sm:px-8 lg:px-12">
-        <p>© {currentYear} PDF Unlock. All rights reserved.</p>
+        <p>© {currentYear} PDF Lock. All rights reserved.</p>
       </footer>
     </div>
   )

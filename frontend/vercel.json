@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://pdf-unlock.vercel.app/api/$1"
+      "destination": "https://pdf-lock.vercel.app/api/$1"
     }
   ]
 }
