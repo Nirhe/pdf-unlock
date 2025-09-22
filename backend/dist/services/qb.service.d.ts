@@ -36,10 +36,23 @@ export interface QuickBooksCustomer {
     name: string;
     email: string;
 }
+export interface ListCustomersOptions {
+    query?: string;
+    page?: number;
+    pageSize?: number;
+}
+export interface ListCustomersResult {
+    customers: QuickBooksCustomer[];
+    total: number;
+    page: number;
+    pageSize: number;
+    hasMore: boolean;
+}
 type QuickBooksCustomerSeed = QuickBooksCustomer | (Omit<QuickBooksCustomer, 'id'> & {
     id?: string;
 });
-export declare function listCustomers(): Promise<QuickBooksCustomer[]>;
+export declare const DEFAULT_CUSTOMER_PAGE_SIZE = 25;
+export declare function listCustomers(options?: ListCustomersOptions): Promise<ListCustomersResult>;
 export declare function __setCustomersForTesting(entries?: QuickBooksCustomerSeed[]): void;
 export declare function createInvoice(payload: InvoicePayload): Promise<Invoice>;
 export declare function getInvoice(invoiceId: string): Promise<Invoice & {

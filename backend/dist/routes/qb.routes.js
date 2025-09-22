@@ -14,6 +14,32 @@ const paymentSchema = zod_1.z.object({
     amount: zod_1.z.number().positive(),
     method: zod_1.z.string().min(1),
 });
+const listCustomersQuerySchema = zod_1.z
+    .object({
+    query: zod_1.z
+        .preprocess((value) => {
+        if (Array.isArray(value)) {
+            const [first] = value;
+            return typeof first === 'string' ? first.trim() : undefined;
+        }
+        if (typeof value === 'string') {
+            return value.trim();
+        }
+        return undefined;
+    }, zod_1.z.string().optional())
+        .transform((value) => value ?? ''),
+    page: zod_1.z
+        .preprocess((value) => (Array.isArray(value) ? value[0] : value), zod_1.z.coerce.number().int().min(1).optional())
+        .transform((value) => value ?? 1),
+    pageSize: zod_1.z
+        .preprocess((value) => (Array.isArray(value) ? value[0] : value), zod_1.z.coerce.number().int().min(1).optional())
+        .transform((value) => value ?? qb_service_1.DEFAULT_CUSTOMER_PAGE_SIZE),
+})
+    .transform((value) => ({
+    query: value.query,
+    page: value.page,
+    pageSize: value.pageSize,
+}));
 router.post('/invoices', async (req, res) => {
     try {
         const payload = invoiceSchema.parse(req.body);
@@ -35,10 +61,18 @@ router.post('/invoices', async (req, res) => {
         });
     }
 });
-router.get('/customers', async (_req, res) => {
+router.get('/customers', async (req, res) => {
+    const parsedQuery = listCustomersQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+        return res.status(400).json({
+            error: 'Invalid request query',
+            details: parsedQuery.error.issues,
+        });
+    }
     try {
-        const customers = await (0, qb_service_1.listCustomers)();
-        return res.status(200).json({ customers });
+        const { query, page, pageSize } = parsedQuery.data;
+        const result = await (0, qb_service_1.listCustomers)({ query, page, pageSize });
+        return res.status(200).json(result);
     }
     catch (_error) {
         return res.status(500).json({
