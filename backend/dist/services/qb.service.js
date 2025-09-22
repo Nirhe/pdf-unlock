@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ResourceNotFoundError = exports.QuickBooksError = void 0;
+exports.DEFAULT_CUSTOMER_PAGE_SIZE = exports.ResourceNotFoundError = exports.QuickBooksError = void 0;
 exports.listCustomers = listCustomers;
 exports.__setCustomersForTesting = __setCustomersForTesting;
 exports.createInvoice = createInvoice;
@@ -15,6 +15,7 @@ exports.ResourceNotFoundError = ResourceNotFoundError;
 const invoices = new Map();
 const payments = new Map();
 const customers = new Map();
+exports.DEFAULT_CUSTOMER_PAGE_SIZE = 25;
 const defaultCustomers = [
     { id: 'cust-001', qbId: 'QB-001', name: 'Acme Corporation', email: 'billing@acme.test' },
     { id: 'cust-002', qbId: 'QB-002', name: 'Globex Corporation', email: 'accounts@globex.test' },
@@ -51,10 +52,46 @@ seedCustomers(defaultCustomers);
 function generateId(prefix) {
     return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
 }
-async function listCustomers() {
-    return Array.from(customers.values())
+function normalizeQuery(query) {
+    if (typeof query !== 'string') {
+        return '';
+    }
+    return query.trim().toLowerCase();
+}
+function ensurePositiveInteger(value, fallback) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return fallback;
+    }
+    const integer = Math.trunc(value);
+    if (integer < 1) {
+        return fallback;
+    }
+    return integer;
+}
+async function listCustomers(options = {}) {
+    const query = normalizeQuery(options.query);
+    const page = ensurePositiveInteger(options.page, 1);
+    const pageSize = ensurePositiveInteger(options.pageSize, exports.DEFAULT_CUSTOMER_PAGE_SIZE);
+    const sortedCustomers = Array.from(customers.values())
         .map((customer) => ({ ...customer }))
         .sort((a, b) => a.name.localeCompare(b.name));
+    const filteredCustomers = query
+        ? sortedCustomers.filter((customer) => {
+            const fields = [customer.name, customer.email, customer.id, customer.qbId];
+            return fields.some((field) => field.toLowerCase().includes(query));
+        })
+        : sortedCustomers;
+    const total = filteredCustomers.length;
+    const offset = (page - 1) * pageSize;
+    const customersPage = offset >= filteredCustomers.length ? [] : filteredCustomers.slice(offset, offset + pageSize);
+    const hasMore = offset + pageSize < total;
+    return {
+        customers: customersPage,
+        total,
+        page,
+        pageSize,
+        hasMore,
+    };
 }
 function __setCustomersForTesting(entries) {
     if (!entries) {
