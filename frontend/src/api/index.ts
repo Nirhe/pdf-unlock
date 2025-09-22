@@ -27,3 +27,14 @@ export {
   type RawQuickBooksCustomer,
   type UseQuickBooksCustomersQueryOptions,
 } from './qb.js'
+export {
+  useQuickBooksCustomerSearch,
+  sanitizeQuickBooksCustomerSearchQuery,
+  buildQuickBooksCustomerSearchKey,
+  normalizeQuickBooksCustomerSearchResponse,
+  DEFAULT_QUICKBOOKS_CUSTOMER_SEARCH_PAGE_SIZE,
+  type QuickBooksCustomerSearchQueryOptions,
+  type QuickBooksCustomerSearchResponse,
+  type QuickBooksCustomerSearchResult,
+  type UseQuickBooksCustomerSearchResult,
+} from './useQuickBooksCustomerSearch.js'

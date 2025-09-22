@@ -1,7 +1,7 @@
 import { useEffect, useState, type FC } from 'react'
 import PageSection from '../components/ui/PageSection'
 import Surface from '../components/ui/Surface'
-import CustomerDropdown from '../components/CustomerDropdown'
+import CustomerSelector from '../components/CustomerSelector'
 import type { QuickBooksCustomer } from '../api'
 import PdfUploader from '../components/PdfUploader'
 import Button from '../components/ui/Button'
@@ -216,7 +216,7 @@ const UnlockPage: FC = () => {
           Search your connected QuickBooks customers to prefill invoices or associate uploads with the right account. Start
           typing a name or email address to filter the list.
         </p>
-        <CustomerDropdown
+        <CustomerSelector
           label="Select a customer"
           placeholder="Start typing a customer name or email…"
           helperText="Customers sync from QuickBooks automatically. Narrow the search to find the right match quickly."
