@@ -4,7 +4,7 @@ import { useHashRouter } from './hooks/useHashRouter'
 import AboutPage from './pages/AboutPage'
 import HomePage from './pages/HomePage'
 import NotFoundPage from './pages/NotFoundPage'
-import UnlockPage from './pages/UnlockPage'
+import LockPage from './pages/LockPage'
 
 type RouteDefinition = {
   path: string
@@ -14,7 +14,7 @@ type RouteDefinition = {
 
 const routes: RouteDefinition[] = [
   { path: '/', label: 'Home', element: <HomePage /> },
-  { path: '/unlock', label: 'Unlock', element: <UnlockPage /> },
+  { path: '/unlock', label: 'Lock', element: <LockPage /> },
   { path: '/about', label: 'About', element: <AboutPage /> },
 ]
 
