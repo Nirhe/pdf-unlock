@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { ApiProvider } from '../dist-test/api/ApiProvider.js'
 import { parseServerErrorMessage } from '../dist-test/utils/parseServerErrorMessage.js'
 import { createReviewAndSendFormData } from '../dist-test/pages/createReviewAndSendFormData.js'
+import LockPage from '../dist-test/pages/LockPage.js'
 
 describe('parseServerErrorMessage', () => {
   it('returns the message field when provided', () => {
@@ -35,5 +39,16 @@ describe('createReviewAndSendFormData', () => {
     assert.equal(formData.get('document'), file)
     assert.equal(formData.get('customerId'), 'qb-42')
     assert.equal(formData.has('file'), false)
+  })
+})
+
+describe('LockPage messaging', () => {
+  it('renders the locking flow copy and disabled action when password protection is off', () => {
+    const markup = renderToStaticMarkup(createElement(ApiProvider, {}, createElement(LockPage)))
+
+    assert.match(markup, /Lock PDF with Password/)
+    assert.match(markup, /Lock &amp; Generate Payment Link/)
+    assert.match(markup, /Enable password protection to continue\./)
+    assert.ok(/<button[^>]+disabled/.test(markup), 'expected the submit button to be disabled by default')
   })
 })
