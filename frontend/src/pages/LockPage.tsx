@@ -5,6 +5,7 @@ import CustomerSelector from '../components/CustomerSelector.js'
 import type { QuickBooksCustomer } from '../api/index.js'
 import PdfUploader from '../components/PdfUploader.js'
 import Button from '../components/ui/Button.js'
+import { useTranslations } from '../i18n/useTranslations.js'
 import { parseServerErrorMessage } from '../utils/parseServerErrorMessage.js'
 import { createReviewAndSendFormData } from './createReviewAndSendFormData.js'
 import { startInvoiceStatusPolling } from './startInvoiceStatusPolling.js'
@@ -70,6 +71,7 @@ const LockPage: FC = () => {
   const [invoiceId, setInvoiceId] = useState<string | null>(null)
   const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
+  const { t } = useTranslations()
 
   const handleReviewAndSend = async () => {
     if (!selectedCustomer || !selectedPdf || isSending || !shouldLockWithPassword) {
@@ -94,7 +96,7 @@ const LockPage: FC = () => {
       const rawBody = await response.text()
 
       if (!response.ok) {
-        let errorMessage = `Request failed with status ${response.status}`
+        let errorMessage = t('lock.error.requestFailed', { status: response.status })
 
         const parsedError = parseServerErrorMessage(rawBody)
 
@@ -112,18 +114,18 @@ const LockPage: FC = () => {
         try {
           data = JSON.parse(rawBody)
         } catch {
-          throw new Error('Received an invalid response from the server.')
+          throw new Error(t('lock.error.invalidResponse'))
         }
       }
 
       const { paymentLink: paymentLinkValue, invoiceId: invoiceIdValue, password } = parseSendResponse(data)
 
       if (!paymentLinkValue) {
-        throw new Error('The server response did not include a payment link.')
+        throw new Error(t('lock.error.missingPaymentLink'))
       }
 
       if (!invoiceIdValue) {
-        throw new Error('The server response did not include an invoice ID.')
+        throw new Error(t('lock.error.missingInvoiceId'))
       }
 
       if (password) {
@@ -133,7 +135,7 @@ const LockPage: FC = () => {
       setPaymentLink(paymentLinkValue)
       setInvoiceId(invoiceIdValue)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to send the document.'
+      const message = error instanceof Error ? error.message : t('lock.error.sendFailed')
       setSendError(message)
       setInvoiceId(null)
       setInvoiceStatus(null)
@@ -157,7 +159,7 @@ const LockPage: FC = () => {
         const rawBody = await response.text()
 
         if (!response.ok) {
-          let errorMessage = `Request failed with status ${response.status}`
+          let errorMessage = t('lock.error.requestFailed', { status: response.status })
 
           const parsedError = parseServerErrorMessage(rawBody)
 
@@ -171,14 +173,14 @@ const LockPage: FC = () => {
         }
 
         if (!rawBody) {
-          throw new Error('The server response did not include an invoice status.')
+          throw new Error(t('lock.error.missingInvoiceStatus'))
         }
 
         let data: unknown = null
         try {
           data = JSON.parse(rawBody)
         } catch {
-          throw new Error('Received an invalid response while checking the invoice status.')
+          throw new Error(t('lock.error.invalidInvoiceStatusResponse'))
         }
 
         const { status: statusValue, password } = parseInvoiceStatusResponse(data)
@@ -188,7 +190,7 @@ const LockPage: FC = () => {
         }
 
         if (!statusValue) {
-          throw new Error('The server response did not include an invoice status.')
+          throw new Error(t('lock.error.missingInvoiceStatus'))
         }
 
         return statusValue
@@ -204,7 +206,7 @@ const LockPage: FC = () => {
         setInvoiceStatus(normalizedStatus)
       },
       onError: (error) => {
-        const message = error instanceof Error ? error.message : 'Unable to fetch the invoice status.'
+        const message = error instanceof Error ? error.message : t('lock.error.statusFailed')
 
         setInvoiceStatus(null)
         setSendError(message)
@@ -214,7 +216,7 @@ const LockPage: FC = () => {
     return () => {
       stopPolling()
     }
-  }, [invoiceId])
+  }, [invoiceId, t])
 
   const isReadyToSend = Boolean(selectedCustomer && selectedPdf && shouldLockWithPassword)
   const isSubmitDisabled = !isReadyToSend || isSending
@@ -223,50 +225,47 @@ const LockPage: FC = () => {
     <PageSection aria-labelledby="lock-title">
       <Surface className="grid gap-4">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl" id="lock-title">
-          Lock PDF with Password
+          {t('lock.title')}
         </h1>
-        <p className="text-base leading-relaxed text-slate-600">
-          Protect your PDF with a strong, system-generated password. Upload the document, confirm the customer who should
-          receive it, and we will deliver secure access after payment is confirmed.
-        </p>
+        <p className="text-base leading-relaxed text-slate-600">{t('lock.description')}</p>
       </Surface>
 
       <Surface className="grid gap-5">
         <div className="grid gap-2">
           <h2 className="text-xl font-semibold text-slate-900" id="pdf-upload-title">
-            Upload the PDF to protect
+            {t('lock.upload.title')}
           </h2>
-          <p className="text-base leading-relaxed text-slate-600">
-            Drag and drop the PDF you want to secure into the area below or browse to choose a file. We currently accept PDF
-            files with the <strong>.pdf</strong> extension only.
-          </p>
+          <p
+            className="text-base leading-relaxed text-slate-600"
+            dangerouslySetInnerHTML={{ __html: t('lock.upload.description') }}
+          />
         </div>
         <PdfUploader ariaLabelledBy="pdf-upload-title" onFileChange={setSelectedPdf} />
         <p className="text-sm text-slate-600" aria-live="polite">
           {selectedPdf
-            ? `Ready to lock ${selectedPdf.name}. Upload a different PDF to replace it.`
-            : 'No PDF uploaded yet. Select a file to begin.'}
+            ? t('lock.upload.ready', { fileName: selectedPdf.name })
+            : t('lock.upload.empty')}
         </p>
       </Surface>
 
       <Surface className="grid gap-4">
-        <h2 className="text-xl font-semibold text-slate-900">QuickBooks customer lookup</h2>
-        <p className="text-base leading-relaxed text-slate-600">
-          Search your connected QuickBooks customers to send the locked document to the right account. Start typing a name or
-          email address to filter the list.
-        </p>
+        <h2 className="text-xl font-semibold text-slate-900">{t('lock.customer.title')}</h2>
+        <p className="text-base leading-relaxed text-slate-600">{t('lock.customer.description')}</p>
         <CustomerSelector
-          label="Select a customer"
-          placeholder="Start typing a customer name or email…"
-          helperText="Customers sync from QuickBooks automatically. Narrow the search to find the right match quickly."
+          label={t('lock.customer.selectorLabel')}
+          placeholder={t('lock.customer.selectorPlaceholder')}
+          helperText={t('lock.customer.selectorHelper')}
           required
           name="qbCustomerId"
           onSelect={setSelectedCustomer}
         />
         <p className="text-sm text-slate-600" aria-live="polite">
           {selectedCustomer
-            ? `Selected ${selectedCustomer.name} (${selectedCustomer.email}). They will receive the payment email and password.`
-            : 'No customer selected yet. Choose who should receive the locked PDF.'}
+            ? t('lock.customer.selected', {
+                customerName: selectedCustomer.name,
+                customerEmail: selectedCustomer.email,
+              })
+            : t('lock.customer.empty')}
         </p>
       </Surface>
 
@@ -283,24 +282,24 @@ const LockPage: FC = () => {
                 aria-describedby="lock-toggle-helper"
               />
               <div className="flex flex-col gap-2">
-                <span className="text-base font-semibold text-slate-900">Lock with password</span>
+                <span className="text-base font-semibold text-slate-900">{t('lock.passwordToggle.label')}</span>
                 <p className="text-sm leading-relaxed text-slate-600" id="lock-toggle-helper">
-                  Encrypts the PDF with a system-generated password before it is sent to your customer.
+                  {t('lock.passwordToggle.helper')}
                 </p>
               </div>
             </label>
             <button
               type="button"
               className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-slate-300 text-sm font-semibold text-slate-600 transition hover:border-slate-400 hover:text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-              aria-label="Learn how locking with a password works"
-              title="We generate a strong password, email it to your customer, and display it here after payment."
+              aria-label={t('lock.passwordToggle.ariaLabel')}
+              title={t('lock.passwordToggle.tooltip')}
             >
               ?
             </button>
           </div>
           {!shouldLockWithPassword ? (
             <p className="text-sm font-medium text-red-600" role="alert" aria-live="assertive">
-              Enable password protection to continue.
+              {t('lock.requiredToggleMessage')}
             </p>
           ) : null}
         </div>
@@ -308,39 +307,36 @@ const LockPage: FC = () => {
 
       <div className="grid gap-6 md:grid-cols-2" role="list">
         <Surface as="article" role="listitem" className="grid gap-4">
-          <h2 className="text-xl font-semibold text-slate-900">Preparation checklist</h2>
+          <h2 className="text-xl font-semibold text-slate-900">{t('lock.preparation.title')}</h2>
           <ul className="list-disc space-y-2 pl-5 text-base leading-relaxed text-slate-600">
-            <li>Confirm who should receive the locked PDF once payment clears.</li>
-            <li>Let your customer know a unique password will arrive in their inbox.</li>
-            <li>Review your retention policies for storing the encrypted document and password.</li>
+            <li>{t('lock.preparation.confirm')}</li>
+            <li>{t('lock.preparation.inform')}</li>
+            <li>{t('lock.preparation.review')}</li>
           </ul>
         </Surface>
         <Surface as="article" role="listitem" className="grid gap-4">
-          <h2 className="text-xl font-semibold text-slate-900">What happens next?</h2>
-          <p className="text-base leading-relaxed text-slate-600">
-            We will guide you through uploading the file, generating the secure password, and collecting payment. After the
-            invoice is paid, we email the password to your customer and display it below for quick reference.
-          </p>
+          <h2 className="text-xl font-semibold text-slate-900">{t('lock.nextSteps.title')}</h2>
+          <p className="text-base leading-relaxed text-slate-600">{t('lock.nextSteps.description')}</p>
         </Surface>
       </div>
 
       <Surface className="grid gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button type="button" onClick={handleReviewAndSend} disabled={isSubmitDisabled}>
-            {isSending ? 'Locking PDF and creating payment link…' : 'Lock & Generate Payment Link'}
+            {isSending ? t('lock.progress') : t('lock.cta')}
           </Button>
           <p className="text-sm text-slate-600" aria-live="polite">
             {isReadyToSend
-              ? 'We will generate a payment link, lock the PDF, and share the password automatically.'
+              ? t('lock.helper')
               : shouldLockWithPassword
-                ? 'Select a PDF and customer to enable locking.'
-                : 'Enable password protection, then select a PDF and customer to continue.'}
+                ? t('lock.helper.select')
+                : t('lock.helper.enable')}
           </p>
         </div>
         <div aria-live="polite" aria-atomic="true" className="grid gap-3">
           {isSending ? (
             <p className="text-sm font-medium text-slate-700" role="status">
-              Locking PDF and creating payment link…
+              {t('lock.progress')}
             </p>
           ) : null}
           {paymentLink ? (
@@ -348,20 +344,20 @@ const LockPage: FC = () => {
               className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm font-semibold text-blue-900"
               role="status"
             >
-              <span>Payment link ready. Share it with your customer to confirm the order.</span>
+              <span>{t('lock.paymentLinkReady')}</span>
               <Button as="a" href={paymentLink} target="_blank" rel="noreferrer">
-                Pay Now
+                {t('lock.payNow')}
               </Button>
             </div>
           ) : null}
           {invoiceStatus && invoiceStatus !== 'PAID' ? (
             <p className="text-sm font-medium text-slate-700" role="status">
-              Waiting for payment confirmation…
+              {t('lock.waiting')}
             </p>
           ) : null}
           {invoiceStatus === 'PAID' ? (
             <p className="text-sm font-semibold text-emerald-700" role="status">
-              Payment confirmed. Password sent to the customer and available below.
+              {t('lock.success')}
             </p>
           ) : null}
           {sendError ? (
@@ -371,9 +367,9 @@ const LockPage: FC = () => {
           ) : null}
           {lockPassword ? (
             <div className="grid gap-2 rounded-lg border border-emerald-200 bg-emerald-50/80 p-4" aria-live="polite">
-              <h3 className="text-sm font-semibold text-emerald-900">Password</h3>
+              <h3 className="text-sm font-semibold text-emerald-900">{t('lock.passwordHeader')}</h3>
               <p className="font-mono text-base font-semibold tracking-wide text-emerald-900">{lockPassword}</p>
-              <p className="text-xs text-emerald-800">Store this password securely. It has also been emailed to the customer.</p>
+              <p className="text-xs text-emerald-800">{t('lock.passwordSubheader')}</p>
             </div>
           ) : null}
         </div>
