@@ -42,11 +42,27 @@ export interface QuickBooksCustomer {
   email: string;
 }
 
+export interface ListCustomersOptions {
+  query?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ListCustomersResult {
+  customers: QuickBooksCustomer[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
 type QuickBooksCustomerSeed = QuickBooksCustomer | (Omit<QuickBooksCustomer, 'id'> & { id?: string });
 
 const invoices = new Map<string, Invoice>();
 const payments = new Map<string, Payment[]>();
 const customers = new Map<string, QuickBooksCustomer>();
+
+export const DEFAULT_CUSTOMER_PAGE_SIZE = 25;
 
 const defaultCustomers: QuickBooksCustomerSeed[] = [
   { id: 'cust-001', qbId: 'QB-001', name: 'Acme Corporation', email: 'billing@acme.test' },
@@ -95,10 +111,56 @@ function generateId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
 }
 
-export async function listCustomers(): Promise<QuickBooksCustomer[]> {
-  return Array.from(customers.values())
+function normalizeQuery(query?: string): string {
+  if (typeof query !== 'string') {
+    return '';
+  }
+
+  return query.trim().toLowerCase();
+}
+
+function ensurePositiveInteger(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  const integer = Math.trunc(value);
+
+  if (integer < 1) {
+    return fallback;
+  }
+
+  return integer;
+}
+
+export async function listCustomers(options: ListCustomersOptions = {}): Promise<ListCustomersResult> {
+  const query = normalizeQuery(options.query);
+  const page = ensurePositiveInteger(options.page, 1);
+  const pageSize = ensurePositiveInteger(options.pageSize, DEFAULT_CUSTOMER_PAGE_SIZE);
+
+  const sortedCustomers = Array.from(customers.values())
     .map((customer) => ({ ...customer }))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  const filteredCustomers = query
+    ? sortedCustomers.filter((customer) => {
+        const fields = [customer.name, customer.email, customer.id, customer.qbId];
+        return fields.some((field) => field.toLowerCase().includes(query));
+      })
+    : sortedCustomers;
+
+  const total = filteredCustomers.length;
+  const offset = (page - 1) * pageSize;
+  const customersPage = offset >= filteredCustomers.length ? [] : filteredCustomers.slice(offset, offset + pageSize);
+  const hasMore = offset + pageSize < total;
+
+  return {
+    customers: customersPage,
+    total,
+    page,
+    pageSize,
+    hasMore,
+  };
 }
 
 export function __setCustomersForTesting(entries?: QuickBooksCustomerSeed[]): void {

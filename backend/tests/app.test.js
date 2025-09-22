@@ -265,38 +265,130 @@ test('validates email payload', async () => {
   assert.equal(body.error, 'Invalid request payload');
 });
 
-test('lists QuickBooks customers', async () => {
+test('filters QuickBooks customers by query across multiple fields', async () => {
   qbService.__setCustomersForTesting([
-    { id: 'cust-test-1', qbId: 'QB-TEST-1', name: 'Beta Industries', email: 'billing@beta.test' },
-    { id: 'cust-test-2', qbId: 'QB-TEST-2', name: 'Alpha Holdings', email: 'ap@alpha.test' },
+    { id: 'cust-delta', qbId: 'QB-DELTA', name: 'Delta Partners', email: 'hello@alpha-delta.test' },
+    { id: 'cust-alpha', qbId: 'QB-ALPHA', name: 'Alpha Holdings', email: 'billing@alpha.test' },
+    { id: 'cust-gamma', qbId: 'QB-GAMMA', name: 'Gamma Services', email: 'support@gamma.test' },
+    { id: 'cust-beta', qbId: 'QB-BETA', name: 'Beta Manufacturing', email: 'accounts@beta.test' },
   ]);
 
   try {
-    const { response, body } = await requestJson('/api/qb/customers', { method: 'GET' });
+    const alphaSearch = await requestJson('/api/qb/customers?query=ALPHA', { method: 'GET' });
 
-    assert.equal(response.status, 200);
-    assert.deepEqual(body, {
+    assert.equal(alphaSearch.response.status, 200);
+    assert.deepEqual(alphaSearch.body, {
       customers: [
-        { id: 'cust-test-2', qbId: 'QB-TEST-2', name: 'Alpha Holdings', email: 'ap@alpha.test' },
-        { id: 'cust-test-1', qbId: 'QB-TEST-1', name: 'Beta Industries', email: 'billing@beta.test' },
+        { id: 'cust-alpha', qbId: 'QB-ALPHA', name: 'Alpha Holdings', email: 'billing@alpha.test' },
+        { id: 'cust-delta', qbId: 'QB-DELTA', name: 'Delta Partners', email: 'hello@alpha-delta.test' },
       ],
+      total: 2,
+      page: 1,
+      pageSize: 25,
+      hasMore: false,
     });
+
+    const idSearch = await requestJson('/api/qb/customers?query=cust-gamma', { method: 'GET' });
+
+    assert.equal(idSearch.response.status, 200);
+    assert.equal(idSearch.body.total, 1);
+    assert.equal(idSearch.body.page, 1);
+    assert.equal(idSearch.body.pageSize, 25);
+    assert.equal(idSearch.body.hasMore, false);
+    assert.deepEqual(idSearch.body.customers, [
+      { id: 'cust-gamma', qbId: 'QB-GAMMA', name: 'Gamma Services', email: 'support@gamma.test' },
+    ]);
+
+    const qbIdSearch = await requestJson('/api/qb/customers?query=qb-beta', { method: 'GET' });
+
+    assert.equal(qbIdSearch.response.status, 200);
+    assert.equal(qbIdSearch.body.total, 1);
+    assert.equal(qbIdSearch.body.page, 1);
+    assert.equal(qbIdSearch.body.pageSize, 25);
+    assert.equal(qbIdSearch.body.hasMore, false);
+    assert.deepEqual(qbIdSearch.body.customers, [
+      { id: 'cust-beta', qbId: 'QB-BETA', name: 'Beta Manufacturing', email: 'accounts@beta.test' },
+    ]);
   } finally {
     qbService.__setCustomersForTesting();
   }
 });
 
-test('returns an empty list when no QuickBooks customers are available', async () => {
+test('paginates QuickBooks customers and reports hasMore correctly', async () => {
+  qbService.__setCustomersForTesting([
+    { id: 'cust-3', qbId: 'QB-3', name: 'Charlie Services', email: 'charlie@example.test' },
+    { id: 'cust-5', qbId: 'QB-5', name: 'Echo Logistics', email: 'echo@example.test' },
+    { id: 'cust-1', qbId: 'QB-1', name: 'Alpha Studios', email: 'alpha@example.test' },
+    { id: 'cust-2', qbId: 'QB-2', name: 'Bravo Systems', email: 'bravo@example.test' },
+    { id: 'cust-4', qbId: 'QB-4', name: 'Delta Partners', email: 'delta@example.test' },
+  ]);
+
+  try {
+    const { response, body } = await requestJson('/api/qb/customers?page=2&pageSize=2', { method: 'GET' });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.customers, [
+      { id: 'cust-3', qbId: 'QB-3', name: 'Charlie Services', email: 'charlie@example.test' },
+      { id: 'cust-4', qbId: 'QB-4', name: 'Delta Partners', email: 'delta@example.test' },
+    ]);
+    assert.equal(body.total, 5);
+    assert.equal(body.page, 2);
+    assert.equal(body.pageSize, 2);
+    assert.equal(body.hasMore, true);
+  } finally {
+    qbService.__setCustomersForTesting();
+  }
+});
+
+test('returns empty customer list with metadata when page exceeds available results', async () => {
+  qbService.__setCustomersForTesting([
+    { id: 'cust-1', qbId: 'QB-1', name: 'Alpha Studios', email: 'alpha@example.test' },
+    { id: 'cust-2', qbId: 'QB-2', name: 'Bravo Systems', email: 'bravo@example.test' },
+    { id: 'cust-3', qbId: 'QB-3', name: 'Charlie Services', email: 'charlie@example.test' },
+  ]);
+
+  try {
+    const { response, body } = await requestJson('/api/qb/customers?page=4&pageSize=2', { method: 'GET' });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.customers, []);
+    assert.equal(body.total, 3);
+    assert.equal(body.page, 4);
+    assert.equal(body.pageSize, 2);
+    assert.equal(body.hasMore, false);
+  } finally {
+    qbService.__setCustomersForTesting();
+  }
+});
+
+test('returns metadata when no QuickBooks customers are available', async () => {
   qbService.__setCustomersForTesting([]);
 
   try {
     const { response, body } = await requestJson('/api/qb/customers', { method: 'GET' });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(body, { customers: [] });
+    assert.deepEqual(body, {
+      customers: [],
+      total: 0,
+      page: 1,
+      pageSize: 25,
+      hasMore: false,
+    });
   } finally {
     qbService.__setCustomersForTesting();
   }
+});
+
+test('validates query parameters for QuickBooks customer search', async () => {
+  const { response, body } = await requestJson('/api/qb/customers?page=0&pageSize=-5', { method: 'GET' });
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error, 'Invalid request query');
+  assert.ok(Array.isArray(body.details));
+  const issuePaths = body.details.map((issue) => issue.path.join('.'));
+  assert.ok(issuePaths.includes('page'));
+  assert.ok(issuePaths.includes('pageSize'));
 });
 
 test('creates an invoice and records payment', async () => {
