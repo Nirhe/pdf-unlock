@@ -205,6 +205,11 @@ router.post('/lock', async (req, res) => {
                 details: error.issues,
             });
         }
+        if (error.code === 'ENOENT') {
+            return res.status(404).json({
+                error: 'Document not found',
+            });
+        }
         return res.status(500).json({
             error: 'Unable to lock document',
         });

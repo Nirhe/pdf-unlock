@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs/promises');
 const { Blob } = require('node:buffer');
+const { PDFDocument } = require('pdf-lib');
 
 const app = require('../dist/app').default;
 const qbService = require('../dist/services/qb.service');
@@ -62,21 +63,75 @@ async function requestMultipart(endpoint, formData) {
   return { response, body };
 }
 
+async function createSamplePdf(filePath) {
+  const pdfDocument = await PDFDocument.create();
+  pdfDocument.addPage([300, 300]);
+  const pdfBytes = await pdfDocument.save();
+  await fs.writeFile(filePath, pdfBytes);
+  return pdfBytes;
+}
+
 test('locks a document', async () => {
   const inputPath = path.join(os.tmpdir(), `sample-${Date.now()}.pdf`);
-  await fs.writeFile(inputPath, 'dummy');
+  await createSamplePdf(inputPath);
 
+  let outputPath;
+  try {
+    const { response, body } = await requestJson('/api/docs/lock', {
+      method: 'POST',
+      body: JSON.stringify({ inputPath, password: 'secret' }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.ok(body.outputPath);
+    await fs.access(body.outputPath);
+    outputPath = body.outputPath;
+  } finally {
+    if (outputPath) {
+      await fs.unlink(outputPath).catch(() => {});
+    }
+    await fs.unlink(inputPath).catch(() => {});
+  }
+});
+
+test('returns 404 when locking missing document', async () => {
   const { response, body } = await requestJson('/api/docs/lock', {
     method: 'POST',
-    body: JSON.stringify({ inputPath, password: 'secret' }),
+    body: JSON.stringify({ inputPath: '/tmp/missing.pdf', password: 'secret' }),
   });
 
-  assert.equal(response.status, 200);
-  assert.ok(body.outputPath);
-  await fs.access(body.outputPath);
+  assert.equal(response.status, 404);
+  assert.equal(body.error, 'Document not found');
+});
 
-  await fs.unlink(body.outputPath);
-  await fs.unlink(inputPath);
+test('locked document requires password to open', async () => {
+  const inputPath = path.join(os.tmpdir(), `secure-${Date.now()}.pdf`);
+  await createSamplePdf(inputPath);
+
+  let outputPath;
+  try {
+    const { response, body } = await requestJson('/api/docs/lock', {
+      method: 'POST',
+      body: JSON.stringify({ inputPath, password: 'topsecret' }),
+    });
+
+    assert.equal(response.status, 200);
+    outputPath = body.outputPath;
+
+    const lockedBytes = await fs.readFile(outputPath);
+
+    await assert.rejects(async () => {
+      await PDFDocument.load(lockedBytes);
+    });
+
+    const unlockedDoc = await PDFDocument.load(lockedBytes, { password: 'topsecret' });
+    assert.equal(unlockedDoc.getPageCount(), 1);
+  } finally {
+    if (outputPath) {
+      await fs.unlink(outputPath).catch(() => {});
+    }
+    await fs.unlink(inputPath).catch(() => {});
+  }
 });
 
 test('returns 400 when lock payload invalid', async () => {
