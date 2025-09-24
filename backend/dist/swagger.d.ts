@@ -186,6 +186,9 @@ export declare const openapiSpec: {
                                         readonly paymentLink: {
                                             readonly type: "string";
                                         };
+                                        readonly downloadUrl: {
+                                            readonly type: "string";
+                                        };
                                         readonly invoice: {
                                             readonly type: "object";
                                             readonly properties: {
@@ -216,6 +219,42 @@ export declare const openapiSpec: {
                     };
                     readonly '500': {
                         readonly description: "Unable to send document";
+                    };
+                };
+            };
+        };
+        readonly '/api/docs/download/{downloadId}': {
+            readonly get: {
+                readonly summary: "Download the encrypted document";
+                readonly tags: readonly ["documents"];
+                readonly parameters: readonly [{
+                    readonly name: "downloadId";
+                    readonly in: "path";
+                    readonly required: true;
+                    readonly schema: {
+                        readonly type: "string";
+                    };
+                }];
+                readonly responses: {
+                    readonly '200': {
+                        readonly description: "Encrypted PDF file";
+                        readonly content: {
+                            readonly 'application/pdf': {
+                                readonly schema: {
+                                    readonly type: "string";
+                                    readonly format: "binary";
+                                };
+                            };
+                        };
+                    };
+                    readonly '400': {
+                        readonly description: "Invalid download request";
+                    };
+                    readonly '404': {
+                        readonly description: "Encrypted document not found";
+                    };
+                    readonly '500': {
+                        readonly description: "Unable to download document";
                     };
                 };
             };

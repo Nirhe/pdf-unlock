@@ -145,6 +145,7 @@ exports.openapiSpec = {
                                     properties: {
                                         message: { type: 'string' },
                                         paymentLink: { type: 'string' },
+                                        downloadUrl: { type: 'string' },
                                         invoice: {
                                             type: 'object',
                                             properties: {
@@ -162,6 +163,33 @@ exports.openapiSpec = {
                     '400': { description: 'Validation error / wrong file type / missing file' },
                     '502': { description: 'Downstream processing error' },
                     '500': { description: 'Unable to send document' }
+                }
+            }
+        },
+        '/api/docs/download/{downloadId}': {
+            get: {
+                summary: 'Download the encrypted document',
+                tags: ['documents'],
+                parameters: [
+                    {
+                        name: 'downloadId',
+                        in: 'path',
+                        required: true,
+                        schema: { type: 'string' }
+                    }
+                ],
+                responses: {
+                    '200': {
+                        description: 'Encrypted PDF file',
+                        content: {
+                            'application/pdf': {
+                                schema: { type: 'string', format: 'binary' }
+                            }
+                        }
+                    },
+                    '400': { description: 'Invalid download request' },
+                    '404': { description: 'Encrypted document not found' },
+                    '500': { description: 'Unable to download document' }
                 }
             }
         },

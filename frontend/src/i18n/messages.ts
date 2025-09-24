@@ -86,6 +86,8 @@ const messages = {
   'lock.paymentLinkReady':
     'Payment link ready. Share it with your customer to confirm the order.',
   'lock.payNow': 'Pay Now',
+  'lock.downloadReady': 'Encrypted PDF ready. Download and store it securely.',
+  'lock.downloadCta': 'Download encrypted PDF',
   'lock.waiting': 'Waiting for payment confirmation…',
   'lock.success':
     'Payment confirmed. Password sent to the customer and available below.',

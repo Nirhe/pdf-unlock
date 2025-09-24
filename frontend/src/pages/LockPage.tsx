@@ -48,6 +48,7 @@ const parseSendResponse = (data: unknown) => {
     paymentLink: readStringField(payload, 'paymentLink'),
     invoiceId: readStringField(invoice, 'id') ?? readStringField(payload, 'invoiceId'),
     password: readStringField(invoice, 'password') ?? readStringField(payload, 'password'),
+    downloadUrl: readStringField(payload, 'downloadUrl'),
   }
 }
 
@@ -71,6 +72,7 @@ const LockPage: FC = () => {
   const [invoiceId, setInvoiceId] = useState<string | null>(null)
   const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
   const { t } = useTranslations()
 
   const handleReviewAndSend = async () => {
@@ -84,6 +86,7 @@ const LockPage: FC = () => {
     setInvoiceStatus(null)
     setSendError(null)
     setLockPassword(null)
+    setDownloadUrl(null)
 
     try {
       const formData = createReviewAndSendFormData(selectedPdf, selectedCustomer.qbId)
@@ -118,7 +121,12 @@ const LockPage: FC = () => {
         }
       }
 
-      const { paymentLink: paymentLinkValue, invoiceId: invoiceIdValue, password } = parseSendResponse(data)
+      const {
+        paymentLink: paymentLinkValue,
+        invoiceId: invoiceIdValue,
+        password,
+        downloadUrl: downloadUrlValue,
+      } = parseSendResponse(data)
 
       if (!paymentLinkValue) {
         throw new Error(t('lock.error.missingPaymentLink'))
@@ -134,11 +142,13 @@ const LockPage: FC = () => {
 
       setPaymentLink(paymentLinkValue)
       setInvoiceId(invoiceIdValue)
+      setDownloadUrl(downloadUrlValue ?? null)
     } catch (error) {
       const message = error instanceof Error ? error.message : t('lock.error.sendFailed')
       setSendError(message)
       setInvoiceId(null)
       setInvoiceStatus(null)
+      setDownloadUrl(null)
     } finally {
       setIsSending(false)
     }
@@ -347,6 +357,17 @@ const LockPage: FC = () => {
               <span>{t('lock.paymentLinkReady')}</span>
               <Button as="a" href={paymentLink} target="_blank" rel="noreferrer">
                 {t('lock.payNow')}
+              </Button>
+            </div>
+          ) : null}
+          {downloadUrl ? (
+            <div
+              className="flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-sm font-semibold text-indigo-900"
+              role="status"
+            >
+              <span>{t('lock.downloadReady')}</span>
+              <Button as="a" href={downloadUrl} download>
+                {t('lock.downloadCta')}
               </Button>
             </div>
           ) : null}
