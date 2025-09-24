@@ -1,385 +1,175 @@
 import { Router } from 'express';
-import type { Request } from 'express';
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
 import { z } from 'zod';
+import fs from 'fs/promises';
+import path from 'path';
+import os from 'os';
+import multer from 'multer';
+
 import { lockPdf, unlockPdf } from '../services/pdf.service';
-import {
-  DocumentProcessingError,
-  handleDocumentSubmission,
-  type UploadedDocument,
-} from '../services/document.service';
+import { handleDocumentSubmission, DocumentProcessingError } from '../services/document.service';
 import { createInvoice } from '../services/qb.service';
 
 const router = Router();
 
-const pdfPathSchema = z
-  .string()
-  .min(1)
-  .refine((value) => path.extname(value).toLowerCase() === '.pdf', {
-    message: 'Only PDF documents are supported',
-  });
+// Helpers
+function isPdfPath(filePath: string): boolean {
+  return path.extname(filePath).toLowerCase() === '.pdf';
+}
 
+function tempPath(prefix: string, original?: string) {
+  return path.join(
+    os.tmpdir(),
+    `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.pdf`
+  );
+}
+
+// Schemas
 const lockSchema = z.object({
-  inputPath: pdfPathSchema,
+  inputPath: z.string().min(1),
   password: z.string().min(1),
-  outputPath: pdfPathSchema.optional(),
+  outputPath: z.string().min(1).optional(),
   download: z.boolean().optional(),
 });
 
 const unlockSchema = z.object({
-  inputPath: pdfPathSchema,
-  outputPath: pdfPathSchema.optional(),
+  inputPath: z.string().min(1),
+  outputPath: z.string().min(1).optional(),
 });
 
-const sendSchema = z.object({
-  customerId: z.string().trim().min(1, { message: 'Customer ID is required' }),
-});
-
-const MULTIPART_SIZE_LIMIT = 10 * 1024 * 1024; // 10MB
-
-class MultipartParsingError extends Error {
-  status: number;
-
-  constructor(message: string, status = 400) {
-    super(message);
-    this.name = 'MultipartParsingError';
-    this.status = status;
-  }
-}
-
-async function readRequestBody(req: Request): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-
-  const contentLengthHeader = req.headers['content-length'];
-  if (contentLengthHeader) {
-    const contentLength = Array.isArray(contentLengthHeader)
-      ? Number(contentLengthHeader[0])
-      : Number(contentLengthHeader);
-
-    if (!Number.isNaN(contentLength) && contentLength > MULTIPART_SIZE_LIMIT) {
-      throw new MultipartParsingError('Uploaded file is too large');
-    }
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-
-    const fail = (error: Error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      reject(error);
-    };
-
-    const succeed = () => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      resolve();
-    };
-
-    function cleanup() {
-      req.off('data', onData);
-      req.off('end', onEnd);
-      req.off('error', onError);
-      req.off('aborted', onAborted);
-    }
-
-    function onData(chunk: Buffer) {
-      total += chunk.length;
-      if (total > MULTIPART_SIZE_LIMIT) {
-        fail(new MultipartParsingError('Uploaded file is too large'));
-        return;
-      }
-
-      chunks.push(chunk);
-    }
-
-    function onEnd() {
-      succeed();
-    }
-
-    function onError(error: Error) {
-      fail(error);
-    }
-
-    function onAborted() {
-      fail(new MultipartParsingError('Request aborted'));
-    }
-
-    req.on('data', onData);
-    req.once('end', onEnd);
-    req.once('error', onError);
-    req.once('aborted', onAborted);
-  });
-
-  return Buffer.concat(chunks);
-}
-
-function extractBoundary(contentType?: string | null) {
-  if (!contentType || !contentType.startsWith('multipart/form-data')) {
-    throw new MultipartParsingError('Unsupported content type');
-  }
-
-  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
-
-  if (!boundaryMatch) {
-    throw new MultipartParsingError('Invalid multipart boundary');
-  }
-
-  return boundaryMatch[1] ?? boundaryMatch[2];
-}
-
-interface ParsedMultipart {
-  fields: Record<string, string>;
-  files: Record<string, UploadedDocument>;
-}
-
-function parsePart(part: string): { headers: Record<string, string>; body: string } | undefined {
-  let segment = part;
-
-  if (!segment) {
-    return undefined;
-  }
-
-  if (segment.startsWith('\r\n')) {
-    segment = segment.slice(2);
-  }
-
-  if (segment.endsWith('\r\n')) {
-    segment = segment.slice(0, -2);
-  }
-
-  if (!segment || segment === '--') {
-    return undefined;
-  }
-
-  const headerEnd = segment.indexOf('\r\n\r\n');
-  if (headerEnd === -1) {
-    return undefined;
-  }
-
-  const rawHeaders = segment.slice(0, headerEnd).split('\r\n');
-  const headers: Record<string, string> = {};
-
-  for (const line of rawHeaders) {
-    const separatorIndex = line.indexOf(':');
-    if (separatorIndex === -1) {
-      continue;
-    }
-
-    const key = line.slice(0, separatorIndex).trim().toLowerCase();
-    const value = line.slice(separatorIndex + 1).trim();
-    headers[key] = value;
-  }
-
-  let body = segment.slice(headerEnd + 4);
-  if (body.endsWith('\r\n')) {
-    body = body.slice(0, -2);
-  }
-
-  return { headers, body };
-}
-
-async function parseMultipartForm(req: Request): Promise<ParsedMultipart> {
-  const boundary = extractBoundary(req.headers['content-type']);
-  const rawBody = await readRequestBody(req);
-  const boundaryMarker = `--${boundary}`;
-  const binaryBody = rawBody.toString('binary');
-  const segments = binaryBody.split(boundaryMarker);
-
-  const fields: Record<string, string> = {};
-  const files: Record<string, UploadedDocument> = {};
-
-  for (const segment of segments) {
-    const part = parsePart(segment);
-    if (!part) {
-      continue;
-    }
-
-    const disposition = part.headers['content-disposition'];
-    if (!disposition) {
-      continue;
-    }
-
-    const nameMatch = disposition.match(/name="?([^";]+)"?/i);
-    if (!nameMatch) {
-      continue;
-    }
-
-    const fieldName = nameMatch[1];
-    if (!fieldName) {
-      continue;
-    }
-    const filenameMatch = disposition.match(/filename="?([^";]*)"?/i);
-
-    if (filenameMatch && filenameMatch[1]) {
-      const mimeType = part.headers['content-type'] ?? 'application/octet-stream';
-
-      files[fieldName] = {
-        originalName: filenameMatch[1],
-        mimeType,
-        buffer: Buffer.from(part.body, 'binary'),
-      };
-    } else {
-      fields[fieldName] = Buffer.from(part.body, 'binary').toString('utf8');
-    }
-  }
-
-  return { fields, files };
-}
-
-function deriveOutputPath(inputPath: string, suffix: string) {
-  const ext = path.extname(inputPath) || '.pdf';
-  const base = path.basename(inputPath, ext) || 'document';
-  return path.join(os.tmpdir(), `${base}-${suffix}-${Date.now()}${ext}`);
-}
-
+// POST /api/docs/lock
 router.post('/lock', async (req, res) => {
   try {
-    const { inputPath, password, outputPath, download } = lockSchema.parse(req.body);
-    const destination = outputPath ?? deriveOutputPath(inputPath, 'locked');
+    const payload = lockSchema.parse(req.body);
 
-    await lockPdf(inputPath, destination, password);
+    if (!isPdfPath(payload.inputPath)) {
+      return res.status(400).json({ error: 'Invalid request payload' });
+    }
 
-    if (download === true) {
-      const fileName = path.basename(destination);
-      const fileBuffer = await fs.readFile(destination);
+    try {
+      await fs.access(payload.inputPath);
+    } catch {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const outPath = payload.outputPath && payload.outputPath.trim() ? payload.outputPath : tempPath('locked', payload.inputPath);
+
+    await lockPdf(payload.inputPath, outPath, payload.password);
+
+    if (payload.download) {
+      const lockedBytes = await fs.readFile(outPath);
+      const inputName = path.basename(payload.inputPath, path.extname(payload.inputPath));
+      const downloadName = `${inputName}-locked.pdf`;
 
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-      res.setHeader('Content-Length', fileBuffer.length.toString());
-      res.status(200).send(fileBuffer);
-      return;
+      res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+      return res.status(200).send(lockedBytes);
     }
 
-    res.status(200).json({
-      message: 'Document locked successfully',
-      outputPath: destination,
-    });
+    return res.status(200).json({ message: 'Locked successfully', outputPath: outPath });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({
-        error: 'Invalid request payload',
-        details: error.issues,
-      });
+      return res.status(400).json({ error: 'Invalid request payload', details: error.issues });
     }
 
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return res.status(404).json({
-        error: 'Document not found',
-      });
-    }
-
-    return res.status(500).json({
-      error: 'Unable to lock document',
-    });
+    return res.status(500).json({ error: 'Unable to lock document' });
   }
 });
 
+// POST /api/docs/unlock
 router.post('/unlock', async (req, res) => {
   try {
-    const { inputPath, outputPath } = unlockSchema.parse(req.body);
-    const destination = outputPath ?? deriveOutputPath(inputPath, 'unlocked');
+    const payload = unlockSchema.parse(req.body);
 
-    await unlockPdf(inputPath, destination);
+    if (!isPdfPath(payload.inputPath)) {
+      return res.status(400).json({ error: 'Invalid request payload' });
+    }
 
-    res.status(200).json({
-      message: 'Document unlocked successfully',
-      outputPath: destination,
-    });
+    try {
+      await fs.access(payload.inputPath);
+    } catch {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const outPath = payload.outputPath && payload.outputPath.trim() ? payload.outputPath : tempPath('unlocked', payload.inputPath);
+
+    await unlockPdf(payload.inputPath, outPath);
+
+    return res.status(200).json({ message: 'Unlocked successfully', outputPath: outPath });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({
-        error: 'Invalid request payload',
-        details: error.issues,
-      });
+      return res.status(400).json({ error: 'Invalid request payload', details: error.issues });
     }
 
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return res.status(404).json({
-        error: 'Document not found',
-      });
-    }
-
-    return res.status(500).json({
-      error: 'Unable to unlock document',
-    });
+    return res.status(500).json({ error: 'Unable to unlock document' });
   }
 });
 
-router.post('/send', async (req, res) => {
-  try {
-    const { fields, files } = await parseMultipartForm(req);
-    const { customerId } = sendSchema.parse(fields);
-
-    const file = files.document;
-    if (!file) {
-      return res.status(400).json({
-        error: 'Document file is required',
-      });
-    }
-
-    if (path.extname(file.originalName).toLowerCase() !== '.pdf') {
-      return res.status(400).json({
-        error: 'Only PDF documents are supported',
-      });
-    }
-
-    if (file.mimeType !== 'application/pdf') {
-      return res.status(400).json({
-        error: 'Only PDF documents are supported',
-      });
-    }
-
-    const submission = await handleDocumentSubmission(customerId, file);
-    const invoice = await createInvoice({
-      customerId,
-      amount: submission.invoice.amount,
-      memo: submission.invoice.memo,
-    });
-
-    res.status(200).json({
-      message: 'Document sent successfully',
-      paymentLink: submission.paymentLink,
-      invoice: {
-        id: invoice.id,
-        amount: invoice.amount,
-        balance: invoice.balance,
-        status: invoice.status,
-      },
-    });
-  } catch (error) {
-    if (error instanceof MultipartParsingError) {
-      return res.status(error.status).json({
-        error: error.message,
-      });
-    }
-
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({
-        error: 'Invalid request payload',
-        details: error.issues,
-      });
-    }
-
-    if (error instanceof DocumentProcessingError) {
-      return res.status(502).json({
-        error: error.message,
-      });
-    }
-
-    return res.status(500).json({
-      error: 'Unable to send document',
-    });
-  }
+// Multer setup for /send
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
+// POST /api/docs/send
+router.post('/send', (req, res) => {
+  const ct = (req.headers['content-type'] || '').toString().toLowerCase();
+  if (ct.includes('application/json')) {
+    return res.status(400).json({ error: 'Unsupported content type' });
+  }
+
+  upload.single('document')(req, res, async (err: any) => {
+    if (err) {
+      if ((err as any).code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'Uploaded file is too large' });
+      }
+      return res.status(400).json({ error: 'Invalid request payload' });
+    }
+
+    try {
+      const customerId = typeof (req as any).body?.customerId === 'string' ? (req as any).body.customerId.trim() : '';
+      if (!customerId) {
+        return res.status(400).json({ error: 'Invalid request payload' });
+      }
+
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) {
+        return res.status(400).json({ error: 'Document file is required' });
+      }
+
+      const uploaded = {
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        buffer: file.buffer,
+      } as const;
+
+      const submission = await handleDocumentSubmission(customerId, uploaded);
+
+      const invoice = await createInvoice({
+        customerId,
+        amount: submission.invoice.amount,
+        memo: submission.invoice.memo,
+      });
+
+      return res.status(200).json({
+        message: 'Document sent successfully',
+        paymentLink: submission.paymentLink,
+        invoice: {
+          id: invoice.id,
+          amount: invoice.amount,
+          balance: invoice.balance,
+          status: invoice.status,
+        },
+      });
+    } catch (error) {
+      if (error instanceof DocumentProcessingError) {
+        if (error.message === 'Failed to generate payment link') {
+          return res.status(502).json({ error: error.message });
+        }
+        return res.status(400).json({ error: 'Invalid request payload' });
+      }
+
+      return res.status(500).json({ error: 'Unable to send document' });
+    }
+  });
+});
 export default router;
