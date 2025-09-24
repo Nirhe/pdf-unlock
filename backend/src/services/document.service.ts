@@ -1,6 +1,8 @@
+import crypto from 'crypto';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { lockPdf } from './pdf.service';
 
 export interface DocumentInvoiceDetails {
   amount: number;
@@ -11,6 +13,8 @@ export interface DocumentSubmissionResult {
   storedPath: string;
   paymentLink: string;
   invoice: DocumentInvoiceDetails;
+  downloadId: string;
+  downloadFileName: string;
 }
 
 export interface UploadedDocument {
@@ -26,7 +30,23 @@ export class DocumentProcessingError extends Error {
   }
 }
 
-function generateStoragePath(customerId: string, originalName: string, timestamp: number) {
+interface DownloadEntry {
+  filePath: string;
+  fileName: string;
+  password: string;
+}
+
+const downloadRegistry = new Map<string, DownloadEntry>();
+
+function createSecureToken(): string {
+  if (typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function normalizeDocumentName(originalName: string) {
   const ext = path.extname(originalName).toLowerCase() || '.pdf';
   const baseName = path
     .basename(originalName, ext)
@@ -34,7 +54,47 @@ function generateStoragePath(customerId: string, originalName: string, timestamp
     .replace(/^-|-$/g, '')
     .toLowerCase() || 'document';
 
+  return { ext, baseName };
+}
+
+function generateStoragePath(customerId: string, originalName: string, timestamp: number) {
+  const { ext, baseName } = normalizeDocumentName(originalName);
+
   return path.join(os.tmpdir(), `${customerId}-${timestamp}-${baseName}${ext}`);
+}
+
+function generateLockedFileDetails(customerId: string, originalName: string, timestamp: number) {
+  const { ext, baseName } = normalizeDocumentName(originalName);
+  const lockedBaseName = `${baseName}-locked`;
+  const fileName = `${lockedBaseName}${ext}`;
+  const filePath = path.join(os.tmpdir(), `${customerId}-${timestamp}-${fileName}`);
+
+  return { fileName, filePath };
+}
+
+export function getDownloadEntry(downloadId: string): DownloadEntry | undefined {
+  return downloadRegistry.get(downloadId);
+}
+
+function registerDownloadEntry(entry: DownloadEntry): string {
+  const downloadId = createSecureToken();
+  downloadRegistry.set(downloadId, entry);
+  return downloadId;
+}
+
+function generateDocumentPassword(): string {
+  const buffer = crypto.randomBytes(24).toString('base64');
+  const sanitized = buffer.replace(/[^a-zA-Z0-9]/g, '');
+
+  if (sanitized.length >= 18) {
+    return sanitized.slice(0, 18);
+  }
+
+  if (sanitized.length >= 12) {
+    return sanitized;
+  }
+
+  return crypto.randomBytes(12).toString('hex');
 }
 
 const DEFAULT_INVOICE_AMOUNT = 125;
@@ -83,6 +143,27 @@ export async function handleDocumentSubmission(
     throw new DocumentProcessingError('Failed to generate payment link');
   }
 
+  const { fileName: lockedFileName, filePath: lockedFilePath } = generateLockedFileDetails(
+    customerId,
+    file.originalName,
+    timestamp
+  );
+  const password = generateDocumentPassword();
+
+  try {
+    await lockPdf(storagePath, lockedFilePath, password);
+  } catch (error) {
+    await fs.unlink(storagePath).catch(() => {});
+    await fs.unlink(lockedFilePath).catch(() => {});
+    throw new DocumentProcessingError('Failed to encrypt uploaded document');
+  }
+
+  const downloadId = registerDownloadEntry({
+    filePath: lockedFilePath,
+    fileName: lockedFileName,
+    password,
+  });
+
   const paymentLink = `https://payments.example.com/checkout/${customerId}-${timestamp}`;
 
   return {
@@ -92,6 +173,8 @@ export async function handleDocumentSubmission(
       amount: DEFAULT_INVOICE_AMOUNT,
       memo: generateInvoiceMemo(file.originalName),
     },
+    downloadId,
+    downloadFileName: lockedFileName,
   };
 }
 

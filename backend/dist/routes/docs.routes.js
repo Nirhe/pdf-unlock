@@ -3,6 +3,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const fs_1 = require("fs");
+const fs_2 = require("fs");
 const express_1 = require("express");
 const os_1 = __importDefault(require("os"));
 const path_1 = __importDefault(require("path"));
@@ -271,6 +273,7 @@ router.post('/send', async (req, res) => {
         res.status(200).json({
             message: 'Document sent successfully',
             paymentLink: submission.paymentLink,
+            downloadUrl: `/api/docs/download/${submission.downloadId}`,
             invoice: {
                 id: invoice.id,
                 amount: invoice.amount,
@@ -299,6 +302,43 @@ router.post('/send', async (req, res) => {
         return res.status(500).json({
             error: 'Unable to send document',
         });
+    }
+});
+router.get('/download/:downloadId', async (req, res) => {
+    const downloadId = req.params.downloadId;
+    if (!downloadId) {
+        return res.status(400).json({ error: 'Invalid download request' });
+    }
+    const entry = (0, document_service_1.getDownloadEntry)(downloadId);
+    if (!entry) {
+        return res.status(404).json({ error: 'Encrypted document not found' });
+    }
+    try {
+        await fs_2.promises.access(entry.filePath);
+    }
+    catch (_error) {
+        return res.status(404).json({ error: 'Encrypted document not found' });
+    }
+    try {
+        const stream = (0, fs_1.createReadStream)(entry.filePath);
+        res.setHeader('Content-Type', 'application/pdf');
+        const safeFileName = entry.fileName.replace(/[\r\n"']/g, '-');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFileName}"`);
+        stream.on('error', () => {
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'Unable to download document' });
+            }
+            else {
+                res.destroy();
+            }
+        });
+        stream.pipe(res);
+    }
+    catch (_error) {
+        if (!res.headersSent) {
+            return res.status(500).json({ error: 'Unable to download document' });
+        }
+        res.destroy();
     }
 });
 exports.default = router;

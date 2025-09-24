@@ -220,23 +220,38 @@ test('rejects JSON payload when uploading a document', async () => {
 test('uploads a document for sending and returns payment link', async () => {
   const formData = new FormData();
   formData.set('customerId', 'cust-123');
-  formData.append(
-    'document',
-    new Blob(['%PDF-1.4 test document'], { type: 'application/pdf' }),
-    'sample.pdf'
-  );
+  const uploadPath = path.join(os.tmpdir(), `upload-${Date.now()}.pdf`);
+  const pdfBytes = await createSamplePdf(uploadPath);
+  formData.append('document', new Blob([pdfBytes], { type: 'application/pdf' }), 'sample.pdf');
 
-  const { response, body } = await requestMultipart('/api/docs/send', formData);
+  try {
+    const { response, body } = await requestMultipart('/api/docs/send', formData);
 
-  assert.equal(response.status, 200);
-  assert.equal(body.message, 'Document sent successfully');
-  assert.match(body.paymentLink, /^https:\/\/payments\.example\.com\//);
-  assert.ok(body.invoice);
-  assert.equal(typeof body.invoice.id, 'string');
-  assert.notEqual(body.invoice.id.length, 0);
-  assert.equal(body.invoice.amount, 125);
-  assert.equal(body.invoice.balance, 125);
-  assert.equal(body.invoice.status, 'OPEN');
+    assert.equal(response.status, 200);
+    assert.equal(body.message, 'Document sent successfully');
+    assert.match(body.paymentLink, /^https:\/\/payments\.example\.com\//);
+    assert.ok(body.downloadUrl);
+    assert.match(body.downloadUrl, /^\/api\/docs\/download\//);
+    assert.ok(body.invoice);
+    assert.equal(typeof body.invoice.id, 'string');
+    assert.notEqual(body.invoice.id.length, 0);
+    assert.equal(body.invoice.amount, 125);
+    assert.equal(body.invoice.balance, 125);
+    assert.equal(body.invoice.status, 'OPEN');
+
+    const downloadResponse = await fetch(`${baseUrl}${body.downloadUrl}`);
+    assert.equal(downloadResponse.status, 200);
+    const contentType = downloadResponse.headers.get('content-type') ?? '';
+    assert.match(contentType, /application\/pdf/);
+    const downloadedBuffer = Buffer.from(await downloadResponse.arrayBuffer());
+    assert.ok(downloadedBuffer.length > 0);
+
+    await assert.rejects(async () => {
+      await PDFDocument.load(downloadedBuffer);
+    });
+  } finally {
+    await fs.unlink(uploadPath).catch(() => {});
+  }
 });
 
 test('validates customerId when uploading a document', async () => {
