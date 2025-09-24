@@ -1,6 +1,8 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import swaggerUi from 'swagger-ui-express';
+import { openapiSpec } from './swagger';
 
 import docsRouter from './routes/docs.routes';
 import emailRouter from './routes/email.routes';
@@ -24,6 +26,12 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 // Health check
 app.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
+});
+
+// Swagger
+app.use('/swagger', swaggerUi.serve, swaggerUi.setup(openapiSpec, { explorer: true }));
+app.get('/swagger.json', (_req: Request, res: Response) => {
+  res.json(openapiSpec);
 });
 
 app.use('/api/docs', docsRouter);
