@@ -83,6 +83,12 @@ const messages = {
   'lock.helper.select': 'Select a PDF and customer to enable locking.',
   'lock.helper.enable':
     'Enable password protection, then select a PDF and customer to continue.',
+  'lock.testButton': 'Test lock endpoint',
+  'lock.testProgress': 'Testing lock endpoint…',
+  'lock.testSuccessWithOutput':
+    'Lock endpoint succeeded. Output saved to {outputPath}.',
+  'lock.testSuccess': 'Lock endpoint succeeded.',
+  'lock.testError': 'Unable to complete the lock endpoint test.',
   'lock.paymentLinkReady':
     'Payment link ready. Share it with your customer to confirm the order.',
   'lock.payNow': 'Pay Now',

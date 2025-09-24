@@ -1,8 +1,8 @@
-import { useEffect, useState, type FC } from 'react'
+import { useCallback, useEffect, useState, type FC } from 'react'
 import PageSection from '../components/ui/PageSection.js'
 import Surface from '../components/ui/Surface.js'
 import CustomerSelector from '../components/CustomerSelector.js'
-import type { QuickBooksCustomer } from '../api/index.js'
+import { useApiContext, type QuickBooksCustomer } from '../api/index.js'
 import PdfUploader from '../components/PdfUploader.js'
 import Button from '../components/ui/Button.js'
 import { useTranslations } from '../i18n/useTranslations.js'
@@ -62,6 +62,7 @@ const parseInvoiceStatusResponse = (data: unknown) => {
 }
 
 const LockPage: FC = () => {
+  const { client } = useApiContext()
   const [selectedCustomer, setSelectedCustomer] = useState<QuickBooksCustomer | null>(null)
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null)
   const [shouldLockWithPassword, setShouldLockWithPassword] = useState(false)
@@ -71,7 +72,20 @@ const LockPage: FC = () => {
   const [invoiceId, setInvoiceId] = useState<string | null>(null)
   const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [isTestingLockEndpoint, setIsTestingLockEndpoint] = useState(false)
+  const [testLockMessage, setTestLockMessage] = useState<string | null>(null)
   const { t } = useTranslations()
+
+  const buildApiUrl = useCallback(
+    (path: string) => {
+      const baseUrl = client.defaults.baseURL ?? '/api'
+      const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+      const normalizedPath = path.startsWith('/') ? path : `/${path}`
+
+      return `${normalizedBaseUrl}${normalizedPath}`
+    },
+    [client],
+  )
 
   const handleReviewAndSend = async () => {
     if (!selectedCustomer || !selectedPdf || isSending || !shouldLockWithPassword) {
@@ -84,11 +98,12 @@ const LockPage: FC = () => {
     setInvoiceStatus(null)
     setSendError(null)
     setLockPassword(null)
+    setTestLockMessage(null)
 
     try {
       const formData = createReviewAndSendFormData(selectedPdf, selectedCustomer.qbId)
 
-      const response = await fetch('/api/docs/send', {
+      const response = await fetch(buildApiUrl('/docs/send'), {
         method: 'POST',
         body: formData,
       })
@@ -144,6 +159,75 @@ const LockPage: FC = () => {
     }
   }
 
+  const handleTestLockEndpoint = async () => {
+    if (isTestingLockEndpoint) {
+      return
+    }
+
+    setIsTestingLockEndpoint(true)
+    setTestLockMessage(null)
+    setSendError(null)
+
+    try {
+      const samplePayload = {
+        inputPath: '/tmp/sample.pdf',
+        password: 'sample-password',
+        outputPath: '/tmp/sample-locked.pdf',
+      }
+
+      const response = await fetch(buildApiUrl('/docs/lock'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(samplePayload),
+      })
+
+      const rawBody = await response.text()
+
+      if (!response.ok) {
+        let errorMessage = t('lock.error.requestFailed', { status: response.status })
+
+        const parsedError = parseServerErrorMessage(rawBody)
+
+        if (parsedError) {
+          errorMessage = parsedError
+        } else if (rawBody) {
+          errorMessage = rawBody
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      if (!rawBody) {
+        throw new Error(t('lock.error.invalidResponse'))
+      }
+
+      let data: unknown = null
+
+      try {
+        data = JSON.parse(rawBody)
+      } catch {
+        throw new Error(t('lock.error.invalidResponse'))
+      }
+
+      const payload = toRecord(data)
+      const outputPath = readStringField(payload, 'outputPath')
+
+      if (outputPath) {
+        setTestLockMessage(t('lock.testSuccessWithOutput', { outputPath }))
+      } else {
+        setTestLockMessage(t('lock.testSuccess'))
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('lock.testError')
+      setSendError(message)
+      setTestLockMessage(null)
+    } finally {
+      setIsTestingLockEndpoint(false)
+    }
+  }
+
   useEffect(() => {
     if (!invoiceId) {
       return
@@ -155,7 +239,7 @@ const LockPage: FC = () => {
       intervalMs: INVOICE_STATUS_POLL_INTERVAL_MS,
       timeoutMs: INVOICE_STATUS_TIMEOUT_MS,
       fetchStatus: async (signal) => {
-        const response = await fetch(`/api/qb/invoices/${invoiceId}`, { signal })
+        const response = await fetch(buildApiUrl(`/qb/invoices/${invoiceId}`), { signal })
         const rawBody = await response.text()
 
         if (!response.ok) {
@@ -216,7 +300,7 @@ const LockPage: FC = () => {
     return () => {
       stopPolling()
     }
-  }, [invoiceId, t])
+  }, [invoiceId, t, buildApiUrl])
 
   const isReadyToSend = Boolean(selectedCustomer && selectedPdf && shouldLockWithPassword)
   const isSubmitDisabled = !isReadyToSend || isSending
@@ -321,9 +405,17 @@ const LockPage: FC = () => {
       </div>
 
       <Surface className="grid gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <Button type="button" onClick={handleReviewAndSend} disabled={isSubmitDisabled}>
             {isSending ? t('lock.progress') : t('lock.cta')}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleTestLockEndpoint}
+            disabled={isTestingLockEndpoint}
+          >
+            {isTestingLockEndpoint ? t('lock.testProgress') : t('lock.testButton')}
           </Button>
           <p className="text-sm text-slate-600" aria-live="polite">
             {isReadyToSend
@@ -337,6 +429,11 @@ const LockPage: FC = () => {
           {isSending ? (
             <p className="text-sm font-medium text-slate-700" role="status">
               {t('lock.progress')}
+            </p>
+          ) : null}
+          {isTestingLockEndpoint ? (
+            <p className="text-sm font-medium text-slate-700" role="status">
+              {t('lock.testProgress')}
             </p>
           ) : null}
           {paymentLink ? (
@@ -358,6 +455,11 @@ const LockPage: FC = () => {
           {invoiceStatus === 'PAID' ? (
             <p className="text-sm font-semibold text-emerald-700" role="status">
               {t('lock.success')}
+            </p>
+          ) : null}
+          {testLockMessage ? (
+            <p className="text-sm font-semibold text-emerald-700" role="status">
+              {testLockMessage}
             </p>
           ) : null}
           {sendError ? (
