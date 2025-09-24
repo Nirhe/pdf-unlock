@@ -48,7 +48,8 @@ exports.openapiSpec = {
                                 properties: {
                                     inputPath: { type: 'string' },
                                     password: { type: 'string' },
-                                    outputPath: { type: 'string', nullable: true }
+                                    outputPath: { type: 'string', nullable: true },
+                                    download: { type: 'boolean', nullable: true }
                                 },
                                 required: ['inputPath', 'password']
                             }
@@ -59,6 +60,12 @@ exports.openapiSpec = {
                     '200': {
                         description: 'Locked successfully',
                         content: {
+                            'application/pdf': {
+                                schema: {
+                                    type: 'string',
+                                    format: 'binary'
+                                }
+                            },
                             'application/json': {
                                 schema: {
                                     type: 'object',

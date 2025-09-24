@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { Request } from 'express';
+import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { z } from 'zod';
@@ -24,6 +25,7 @@ const lockSchema = z.object({
   inputPath: pdfPathSchema,
   password: z.string().min(1),
   outputPath: pdfPathSchema.optional(),
+  download: z.boolean().optional(),
 });
 
 const unlockSchema = z.object({
@@ -242,10 +244,21 @@ function deriveOutputPath(inputPath: string, suffix: string) {
 
 router.post('/lock', async (req, res) => {
   try {
-    const { inputPath, password, outputPath } = lockSchema.parse(req.body);
+    const { inputPath, password, outputPath, download } = lockSchema.parse(req.body);
     const destination = outputPath ?? deriveOutputPath(inputPath, 'locked');
 
     await lockPdf(inputPath, destination, password);
+
+    if (download === true) {
+      const fileName = path.basename(destination);
+      const fileBuffer = await fs.readFile(destination);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Content-Length', fileBuffer.length.toString());
+      res.status(200).send(fileBuffer);
+      return;
+    }
 
     res.status(200).json({
       message: 'Document locked successfully',
