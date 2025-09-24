@@ -94,6 +94,41 @@ test('locks a document', async () => {
   }
 });
 
+test('downloads locked document when requested', async () => {
+  const inputPath = path.join(os.tmpdir(), `download-${Date.now()}.pdf`);
+  await createSamplePdf(inputPath);
+
+  try {
+    const response = await fetch(`${baseUrl}/api/docs/lock`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ inputPath, password: 'download-secret', download: true }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'application/pdf');
+
+    const disposition = response.headers.get('content-disposition');
+    assert.ok(disposition);
+    assert.match(disposition, /attachment/);
+    assert.match(disposition, /\.pdf/);
+
+    const lockedBytes = Buffer.from(await response.arrayBuffer());
+    assert.ok(lockedBytes.length > 0);
+
+    await assert.rejects(async () => {
+      await PDFDocument.load(lockedBytes);
+    });
+
+    const unlockedDoc = await PDFDocument.load(lockedBytes, { password: 'download-secret' });
+    assert.equal(unlockedDoc.getPageCount(), 1);
+  } finally {
+    await fs.unlink(inputPath).catch(() => {});
+  }
+});
+
 test('returns 404 when locking missing document', async () => {
   const { response, body } = await requestJson('/api/docs/lock', {
     method: 'POST',
