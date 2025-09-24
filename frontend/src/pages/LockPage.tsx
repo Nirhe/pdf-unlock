@@ -1,8 +1,8 @@
-import { useEffect, useState, type FC } from 'react'
+import { useCallback, useEffect, useState, type FC } from 'react'
 import PageSection from '../components/ui/PageSection.js'
 import Surface from '../components/ui/Surface.js'
 import CustomerSelector from '../components/CustomerSelector.js'
-import type { QuickBooksCustomer } from '../api/index.js'
+import { useApiContext, type QuickBooksCustomer } from '../api/index.js'
 import PdfUploader from '../components/PdfUploader.js'
 import Button from '../components/ui/Button.js'
 import { useTranslations } from '../i18n/useTranslations.js'
@@ -62,6 +62,7 @@ const parseInvoiceStatusResponse = (data: unknown) => {
 }
 
 const LockPage: FC = () => {
+  const { client } = useApiContext()
   const [selectedCustomer, setSelectedCustomer] = useState<QuickBooksCustomer | null>(null)
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null)
   const [shouldLockWithPassword, setShouldLockWithPassword] = useState(false)
@@ -74,6 +75,17 @@ const LockPage: FC = () => {
   const [isTestingLockEndpoint, setIsTestingLockEndpoint] = useState(false)
   const [testLockMessage, setTestLockMessage] = useState<string | null>(null)
   const { t } = useTranslations()
+
+  const buildApiUrl = useCallback(
+    (path: string) => {
+      const baseUrl = client.defaults.baseURL ?? '/api'
+      const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+      const normalizedPath = path.startsWith('/') ? path : `/${path}`
+
+      return `${normalizedBaseUrl}${normalizedPath}`
+    },
+    [client],
+  )
 
   const handleReviewAndSend = async () => {
     if (!selectedCustomer || !selectedPdf || isSending || !shouldLockWithPassword) {
@@ -91,7 +103,7 @@ const LockPage: FC = () => {
     try {
       const formData = createReviewAndSendFormData(selectedPdf, selectedCustomer.qbId)
 
-      const response = await fetch('/api/docs/send', {
+      const response = await fetch(buildApiUrl('/docs/send'), {
         method: 'POST',
         body: formData,
       })
@@ -163,7 +175,7 @@ const LockPage: FC = () => {
         outputPath: '/tmp/sample-locked.pdf',
       }
 
-      const response = await fetch('/api/docs/lock', {
+      const response = await fetch(buildApiUrl('/docs/lock'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -227,7 +239,7 @@ const LockPage: FC = () => {
       intervalMs: INVOICE_STATUS_POLL_INTERVAL_MS,
       timeoutMs: INVOICE_STATUS_TIMEOUT_MS,
       fetchStatus: async (signal) => {
-        const response = await fetch(`/api/qb/invoices/${invoiceId}`, { signal })
+        const response = await fetch(buildApiUrl(`/qb/invoices/${invoiceId}`), { signal })
         const rawBody = await response.text()
 
         if (!response.ok) {
@@ -288,7 +300,7 @@ const LockPage: FC = () => {
     return () => {
       stopPolling()
     }
-  }, [invoiceId, t])
+  }, [invoiceId, t, buildApiUrl])
 
   const isReadyToSend = Boolean(selectedCustomer && selectedPdf && shouldLockWithPassword)
   const isSubmitDisabled = !isReadyToSend || isSending
