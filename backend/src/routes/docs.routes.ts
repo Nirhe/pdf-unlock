@@ -78,32 +78,21 @@ router.post('/lock', (req, res) => {
         return res.status(400).json({ error: 'Password is required' });
       }
 
-      const downloadRaw = (req as any).body?.download;
-      const download =
-        typeof downloadRaw === 'string'
-          ? ['true', '1', 'yes', 'on'].includes(downloadRaw.toLowerCase())
-          : Boolean(downloadRaw);
-
       inputPath = tempPath('lock-input');
       await fs.writeFile(inputPath, file.buffer);
 
       outputPath = tempPath('locked');
       await lockPdf(inputPath, outputPath, passwordRaw);
 
-      if (download) {
-        const lockedBytes = await fs.readFile(outputPath);
-        const inputName = path.basename(file.originalname, path.extname(file.originalname));
-        const downloadName = `${inputName}-locked.pdf`;
+      const lockedBytes = await fs.readFile(outputPath);
+      const inputName = path.basename(file.originalname, path.extname(file.originalname));
+      const downloadName = `${inputName || 'document'}-locked.pdf`;
 
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
-        responded = true;
-        await cleanup({ removeOutput: true });
-        return res.status(200).send(lockedBytes);
-      }
-
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
       responded = true;
-      return res.status(200).json({ message: 'Locked successfully', outputPath });
+      await cleanup({ removeOutput: true });
+      return res.status(200).send(lockedBytes);
     } catch (error) {
       if (!responded) {
         await cleanup({ removeOutput: true });
