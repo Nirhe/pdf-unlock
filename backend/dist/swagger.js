@@ -42,16 +42,15 @@ exports.openapiSpec = {
                 requestBody: {
                     required: true,
                     content: {
-                        'application/json': {
+                        'multipart/form-data': {
                             schema: {
                                 type: 'object',
                                 properties: {
-                                    inputPath: { type: 'string' },
+                                    document: { type: 'string', format: 'binary' },
                                     password: { type: 'string' },
-                                    outputPath: { type: 'string', nullable: true },
                                     download: { type: 'boolean', nullable: true }
                                 },
-                                required: ['inputPath', 'password']
+                                required: ['document', 'password']
                             }
                         }
                     }
