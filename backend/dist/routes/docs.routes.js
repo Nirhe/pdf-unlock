@@ -20,48 +20,88 @@ function isPdfPath(filePath) {
 function tempPath(prefix, original) {
     return path_1.default.join(os_1.default.tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.pdf`);
 }
-// Schemas
-const lockSchema = zod_1.z.object({
-    inputPath: zod_1.z.string().min(1),
-    password: zod_1.z.string().min(1),
-    outputPath: zod_1.z.string().min(1).optional(),
-    download: zod_1.z.boolean().optional(),
-});
 const unlockSchema = zod_1.z.object({
     inputPath: zod_1.z.string().min(1),
     outputPath: zod_1.z.string().min(1).optional(),
 });
+const upload = (0, multer_1.default)({
+    storage: multer_1.default.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+});
 // POST /api/docs/lock
-router.post('/lock', async (req, res) => {
-    try {
-        const payload = lockSchema.parse(req.body);
-        if (!isPdfPath(payload.inputPath)) {
+router.post('/lock', (req, res) => {
+    const ct = (req.headers['content-type'] || '').toString().toLowerCase();
+    if (ct.includes('application/json')) {
+        return res.status(400).json({ error: 'Unsupported content type' });
+    }
+    upload.single('document')(req, res, async (err) => {
+        if (err) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                return res.status(400).json({ error: 'Uploaded file is too large' });
+            }
             return res.status(400).json({ error: 'Invalid request payload' });
         }
+        let inputPath;
+        let outputPath;
+        let responded = false;
+        const cleanup = async (options) => {
+            if (inputPath) {
+                await promises_1.default.unlink(inputPath).catch(() => { });
+                inputPath = undefined;
+            }
+            if ((options?.removeOutput ?? false) && outputPath) {
+                await promises_1.default.unlink(outputPath).catch(() => { });
+                outputPath = undefined;
+            }
+        };
         try {
-            await promises_1.default.access(payload.inputPath);
+            const file = req.file;
+            if (!file) {
+                return res.status(400).json({ error: 'Document file is required' });
+            }
+            if (file.mimetype !== 'application/pdf' && !isPdfPath(file.originalname)) {
+                return res.status(400).json({ error: 'Uploaded file must be a PDF document' });
+            }
+            const passwordRaw = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
+            if (!passwordRaw) {
+                return res.status(400).json({ error: 'Password is required' });
+            }
+            const downloadRaw = req.body?.download;
+            const download = typeof downloadRaw === 'string'
+                ? ['true', '1', 'yes', 'on'].includes(downloadRaw.toLowerCase())
+                : Boolean(downloadRaw);
+            inputPath = tempPath('lock-input');
+            await promises_1.default.writeFile(inputPath, file.buffer);
+            outputPath = tempPath('locked');
+            await (0, pdf_service_1.lockPdf)(inputPath, outputPath, passwordRaw);
+            if (download) {
+                const lockedBytes = await promises_1.default.readFile(outputPath);
+                const inputName = path_1.default.basename(file.originalname, path_1.default.extname(file.originalname));
+                const downloadName = `${inputName}-locked.pdf`;
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+                responded = true;
+                await cleanup({ removeOutput: true });
+                return res.status(200).send(lockedBytes);
+            }
+            responded = true;
+            return res.status(200).json({ message: 'Locked successfully', outputPath });
         }
-        catch {
-            return res.status(404).json({ error: 'Document not found' });
+        catch (error) {
+            if (!responded) {
+                await cleanup({ removeOutput: true });
+                return res.status(500).json({ error: 'Unable to lock document' });
+            }
         }
-        const outPath = payload.outputPath && payload.outputPath.trim() ? payload.outputPath : tempPath('locked', payload.inputPath);
-        await (0, pdf_service_1.lockPdf)(payload.inputPath, outPath, payload.password);
-        if (payload.download) {
-            const lockedBytes = await promises_1.default.readFile(outPath);
-            const inputName = path_1.default.basename(payload.inputPath, path_1.default.extname(payload.inputPath));
-            const downloadName = `${inputName}-locked.pdf`;
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
-            return res.status(200).send(lockedBytes);
+        finally {
+            if (!responded) {
+                await cleanup({ removeOutput: true });
+            }
+            else {
+                await cleanup({ removeOutput: false });
+            }
         }
-        return res.status(200).json({ message: 'Locked successfully', outputPath: outPath });
-    }
-    catch (error) {
-        if (error instanceof zod_1.z.ZodError) {
-            return res.status(400).json({ error: 'Invalid request payload', details: error.issues });
-        }
-        return res.status(500).json({ error: 'Unable to lock document' });
-    }
+    });
 });
 // POST /api/docs/unlock
 router.post('/unlock', async (req, res) => {
@@ -86,11 +126,6 @@ router.post('/unlock', async (req, res) => {
         }
         return res.status(500).json({ error: 'Unable to unlock document' });
     }
-});
-// Multer setup for /send
-const upload = (0, multer_1.default)({
-    storage: multer_1.default.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 // POST /api/docs/send
 router.post('/send', (req, res) => {

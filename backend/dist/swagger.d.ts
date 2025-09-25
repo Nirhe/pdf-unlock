@@ -44,26 +44,23 @@ export declare const openapiSpec: {
                 readonly requestBody: {
                     readonly required: true;
                     readonly content: {
-                        readonly 'application/json': {
+                        readonly 'multipart/form-data': {
                             readonly schema: {
                                 readonly type: "object";
                                 readonly properties: {
-                                    readonly inputPath: {
+                                    readonly document: {
                                         readonly type: "string";
+                                        readonly format: "binary";
                                     };
                                     readonly password: {
                                         readonly type: "string";
-                                    };
-                                    readonly outputPath: {
-                                        readonly type: "string";
-                                        readonly nullable: true;
                                     };
                                     readonly download: {
                                         readonly type: "boolean";
                                         readonly nullable: true;
                                     };
                                 };
-                                readonly required: readonly ["inputPath", "password"];
+                                readonly required: readonly ["document", "password"];
                             };
                         };
                     };
