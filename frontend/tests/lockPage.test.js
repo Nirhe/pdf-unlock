@@ -58,7 +58,6 @@ describe('createLockTestFormData', () => {
 
     assert.equal(formData.get('document'), file)
     assert.equal(formData.get('password'), 'sample-password')
-    assert.equal(formData.get('download'), 'true')
   })
 })
 

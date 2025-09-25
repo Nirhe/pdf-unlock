@@ -85,9 +85,7 @@ const messages = {
     'Enable password protection, then select a PDF and customer to continue.',
   'lock.testButton': 'Test lock endpoint',
   'lock.testProgress': 'Testing lock endpoint…',
-  'lock.testSuccessWithOutput':
-    'Lock endpoint succeeded. Output saved to {outputPath}.',
-  'lock.testSuccess': 'Lock endpoint succeeded.',
+  'lock.testSuccess': 'Lock endpoint succeeded. Downloading the locked PDF…',
   'lock.testError': 'Unable to complete the lock endpoint test.',
   'lock.error.missingTestDocument': 'Select a PDF before testing the lock endpoint.',
   'lock.paymentLinkReady':
