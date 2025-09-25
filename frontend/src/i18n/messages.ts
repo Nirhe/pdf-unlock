@@ -89,6 +89,7 @@ const messages = {
     'Lock endpoint succeeded. Output saved to {outputPath}.',
   'lock.testSuccess': 'Lock endpoint succeeded.',
   'lock.testError': 'Unable to complete the lock endpoint test.',
+  'lock.error.missingTestDocument': 'Select a PDF before testing the lock endpoint.',
   'lock.paymentLinkReady':
     'Payment link ready. Share it with your customer to confirm the order.',
   'lock.payNow': 'Pay Now',
