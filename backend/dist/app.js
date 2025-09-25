@@ -25,9 +25,9 @@ app.use((req, _res, next) => {
 app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
 });
-app.use('/api/docs', docs_routes_1.default);
-app.use('/api/email', email_routes_1.default);
-app.use('/api/qb', qb_routes_1.default);
+app.use('/docs', docs_routes_1.default);
+app.use('/email', email_routes_1.default);
+app.use('/qb', qb_routes_1.default);
 // Catch-all 404 logger
 app.use((req, res) => {
     // eslint-disable-next-line no-console
