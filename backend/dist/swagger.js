@@ -47,8 +47,7 @@ exports.openapiSpec = {
                                 type: 'object',
                                 properties: {
                                     document: { type: 'string', format: 'binary' },
-                                    password: { type: 'string' },
-                                    download: { type: 'boolean', nullable: true }
+                                    password: { type: 'string' }
                                 },
                                 required: ['document', 'password']
                             }
@@ -63,15 +62,6 @@ exports.openapiSpec = {
                                 schema: {
                                     type: 'string',
                                     format: 'binary'
-                                }
-                            },
-                            'application/json': {
-                                schema: {
-                                    type: 'object',
-                                    properties: {
-                                        message: { type: 'string' },
-                                        outputPath: { type: 'string' }
-                                    }
                                 }
                             }
                         }

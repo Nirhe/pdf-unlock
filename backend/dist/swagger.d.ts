@@ -55,10 +55,6 @@ export declare const openapiSpec: {
                                     readonly password: {
                                         readonly type: "string";
                                     };
-                                    readonly download: {
-                                        readonly type: "boolean";
-                                        readonly nullable: true;
-                                    };
                                 };
                                 readonly required: readonly ["document", "password"];
                             };
@@ -73,19 +69,6 @@ export declare const openapiSpec: {
                                 readonly schema: {
                                     readonly type: "string";
                                     readonly format: "binary";
-                                };
-                            };
-                            readonly 'application/json': {
-                                readonly schema: {
-                                    readonly type: "object";
-                                    readonly properties: {
-                                        readonly message: {
-                                            readonly type: "string";
-                                        };
-                                        readonly outputPath: {
-                                            readonly type: "string";
-                                        };
-                                    };
                                 };
                             };
                         };

@@ -78,37 +78,11 @@ async function createSamplePdfBytes() {
   return Buffer.from(pdfBytes);
 }
 
-test('locks an uploaded PDF document and returns an output path', async () => {
-  const pdfBytes = await createSamplePdfBytes();
-  const formData = new FormData();
-  formData.append('document', new Blob([pdfBytes], { type: 'application/pdf' }), 'sample.pdf');
-  formData.append('password', 'secret');
-
-  const { response, body } = await requestMultipart('/api/docs/lock', formData);
-
-  assert.equal(response.status, 200);
-  assert.ok(body);
-  assert.equal(body.message, 'Locked successfully');
-  assert.ok(body.outputPath);
-
-  try {
-    await fs.access(body.outputPath);
-    const lockedBytes = await fs.readFile(body.outputPath);
-    const unlocked = await PDFDocument.load(lockedBytes, { password: 'secret' });
-    assert.equal(unlocked.getPageCount(), 1);
-  } finally {
-    if (body?.outputPath) {
-      await fs.unlink(body.outputPath).catch(() => {});
-    }
-  }
-});
-
-test('downloads locked document when requested via multipart upload', async () => {
+test('locks an uploaded PDF document and returns the encrypted file', async () => {
   const pdfBytes = await createSamplePdfBytes();
   const formData = new FormData();
   formData.append('document', new Blob([pdfBytes], { type: 'application/pdf' }), 'download.pdf');
   formData.append('password', 'download-secret');
-  formData.append('download', 'true');
 
   const response = await fetch(`${baseUrl}/api/docs/lock`, {
     method: 'POST',
