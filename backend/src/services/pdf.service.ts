@@ -7,9 +7,11 @@ export async function lockPdf(inputPath: string, outputPath: string, password: s
   const pdfDocument = await PDFDocument.load(pdfBytes);
 
   const lockedPdfBytes = await pdfDocument.save({
-    userPassword: password,
-    ownerPassword: password,
-    permissions: { printing: 'highResolution', modifying: false, copying: false },
+    encrypt: {
+      userPassword: password,
+      ownerPassword: password,
+      permissions: { printing: 'highResolution', modifying: false, copying: false },
+    },
   });
 
   await fileSystem.writeFile(outputPath, lockedPdfBytes);

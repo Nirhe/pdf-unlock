@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
+const swagger_ui_express_1 = __importDefault(require("swagger-ui-express"));
+const swagger_1 = require("./swagger");
 const docs_routes_1 = __importDefault(require("./routes/docs.routes"));
 const email_routes_1 = __importDefault(require("./routes/email.routes"));
 const qb_routes_1 = __importDefault(require("./routes/qb.routes"));
@@ -25,9 +27,14 @@ app.use((req, _res, next) => {
 app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
 });
-app.use('/docs', docs_routes_1.default);
-app.use('/email', email_routes_1.default);
-app.use('/qb', qb_routes_1.default);
+// Swagger
+app.use('/swagger', swagger_ui_express_1.default.serve, swagger_ui_express_1.default.setup(swagger_1.openapiSpec, { explorer: true }));
+app.get('/swagger.json', (_req, res) => {
+    res.json(swagger_1.openapiSpec);
+});
+app.use('/api/docs', docs_routes_1.default);
+app.use('/api/email', email_routes_1.default);
+app.use('/api/qb', qb_routes_1.default);
 // Catch-all 404 logger
 app.use((req, res) => {
     // eslint-disable-next-line no-console
