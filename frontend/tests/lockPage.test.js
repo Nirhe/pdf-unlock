@@ -6,7 +6,7 @@ import { ApiProvider } from '../dist-test/api/ApiProvider.js'
 import { parseServerErrorMessage } from '../dist-test/utils/parseServerErrorMessage.js'
 import { createReviewAndSendFormData } from '../dist-test/pages/createReviewAndSendFormData.js'
 import { translate } from '../dist-test/i18n/useTranslations.js'
-import LockPage from '../dist-test/pages/LockPage.js'
+import LockPage, { createLockTestFormData } from '../dist-test/pages/LockPage.js'
 
 const escapeHtml = (value) =>
   value
@@ -48,6 +48,17 @@ describe('createReviewAndSendFormData', () => {
     assert.equal(formData.get('document'), file)
     assert.equal(formData.get('customerId'), 'qb-42')
     assert.equal(formData.has('file'), false)
+  })
+})
+
+describe('createLockTestFormData', () => {
+  it('includes the PDF and lock options used for testing the endpoint', () => {
+    const file = new File(['example'], 'sample.pdf', { type: 'application/pdf' })
+    const formData = createLockTestFormData(file)
+
+    assert.equal(formData.get('document'), file)
+    assert.equal(formData.get('password'), 'sample-password')
+    assert.equal(formData.get('download'), 'true')
   })
 })
 

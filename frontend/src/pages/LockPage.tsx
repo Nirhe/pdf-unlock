@@ -61,6 +61,15 @@ const parseInvoiceStatusResponse = (data: unknown) => {
   }
 }
 
+export const createLockTestFormData = (document: File) => {
+  const formData = new FormData()
+  formData.append('document', document)
+  formData.append('password', 'sample-password')
+  formData.append('download', 'true')
+
+  return formData
+}
+
 const LockPage: FC = () => {
   const { client } = useApiContext()
   const [selectedCustomer, setSelectedCustomer] = useState<QuickBooksCustomer | null>(null)
@@ -164,28 +173,26 @@ const LockPage: FC = () => {
       return
     }
 
+    if (!selectedPdf) {
+      setTestLockMessage(null)
+      setSendError(t('lock.error.missingTestDocument'))
+      return
+    }
+
     setIsTestingLockEndpoint(true)
     setTestLockMessage(null)
     setSendError(null)
 
     try {
-      const samplePayload = {
-        inputPath: '/tmp/sample.pdf',
-        password: 'sample-password',
-        outputPath: '/tmp/sample-locked.pdf',
-      }
+      const formData = createLockTestFormData(selectedPdf)
 
       const response = await fetch(buildApiUrl('/docs/lock'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(samplePayload),
+        body: formData,
       })
 
-      const rawBody = await response.text()
-
       if (!response.ok) {
+        const rawBody = await response.text()
         let errorMessage = t('lock.error.requestFailed', { status: response.status })
 
         const parsedError = parseServerErrorMessage(rawBody)
@@ -199,26 +206,36 @@ const LockPage: FC = () => {
         throw new Error(errorMessage)
       }
 
-      if (!rawBody) {
-        throw new Error(t('lock.error.invalidResponse'))
+      const contentType = response.headers.get('Content-Type')?.toLowerCase() ?? ''
+
+      if (contentType.includes('application/json')) {
+        const rawBody = await response.text()
+
+        if (!rawBody) {
+          throw new Error(t('lock.error.invalidResponse'))
+        }
+
+        let data: unknown = null
+
+        try {
+          data = JSON.parse(rawBody)
+        } catch {
+          throw new Error(t('lock.error.invalidResponse'))
+        }
+
+        const payload = toRecord(data)
+        const outputPath = readStringField(payload, 'outputPath')
+
+        if (outputPath) {
+          setTestLockMessage(t('lock.testSuccessWithOutput', { outputPath }))
+        } else {
+          setTestLockMessage(t('lock.testSuccess'))
+        }
+        return
       }
 
-      let data: unknown = null
-
-      try {
-        data = JSON.parse(rawBody)
-      } catch {
-        throw new Error(t('lock.error.invalidResponse'))
-      }
-
-      const payload = toRecord(data)
-      const outputPath = readStringField(payload, 'outputPath')
-
-      if (outputPath) {
-        setTestLockMessage(t('lock.testSuccessWithOutput', { outputPath }))
-      } else {
-        setTestLockMessage(t('lock.testSuccess'))
-      }
+      await response.blob()
+      setTestLockMessage(t('lock.testSuccess'))
     } catch (error) {
       const message = error instanceof Error ? error.message : t('lock.testError')
       setSendError(message)
