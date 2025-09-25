@@ -65,7 +65,6 @@ export const createLockTestFormData = (document: File) => {
   const formData = new FormData()
   formData.append('document', document)
   formData.append('password', 'sample-password')
-  formData.append('download', 'true')
 
   return formData
 }
@@ -206,35 +205,38 @@ const LockPage: FC = () => {
         throw new Error(errorMessage)
       }
 
-      const contentType = response.headers.get('Content-Type')?.toLowerCase() ?? ''
+      const blob = await response.blob()
+      const contentDisposition = response.headers.get('Content-Disposition') ?? ''
 
-      if (contentType.includes('application/json')) {
-        const rawBody = await response.text()
-
-        if (!rawBody) {
-          throw new Error(t('lock.error.invalidResponse'))
+      const extractFileName = () => {
+        const encodedMatch = contentDisposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)
+        if (encodedMatch && encodedMatch[1]) {
+          try {
+            return decodeURIComponent(encodedMatch[1])
+          } catch {
+            return encodedMatch[1]
+          }
         }
 
-        let data: unknown = null
-
-        try {
-          data = JSON.parse(rawBody)
-        } catch {
-          throw new Error(t('lock.error.invalidResponse'))
+        const quotedMatch = contentDisposition.match(/filename\s*=\s*"?([^";]+)"?/i)
+        if (quotedMatch && quotedMatch[1]) {
+          return quotedMatch[1]
         }
 
-        const payload = toRecord(data)
-        const outputPath = readStringField(payload, 'outputPath')
-
-        if (outputPath) {
-          setTestLockMessage(t('lock.testSuccessWithOutput', { outputPath }))
-        } else {
-          setTestLockMessage(t('lock.testSuccess'))
-        }
-        return
+        return null
       }
 
-      await response.blob()
+      const fileName = extractFileName() ?? 'locked-document.pdf'
+      const blobUrl = URL.createObjectURL(blob)
+      const downloadLink = document.createElement('a')
+      downloadLink.href = blobUrl
+      downloadLink.download = fileName
+      downloadLink.style.display = 'none'
+      document.body.appendChild(downloadLink)
+      downloadLink.click()
+      document.body.removeChild(downloadLink)
+      URL.revokeObjectURL(blobUrl)
+
       setTestLockMessage(t('lock.testSuccess'))
     } catch (error) {
       const message = error instanceof Error ? error.message : t('lock.testError')
