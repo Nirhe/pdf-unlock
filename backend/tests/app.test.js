@@ -4,185 +4,12 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs/promises');
 const { Blob } = require('node:buffer');
-const { PDFDocument } = require('pdf-lib');
-const {
-  PDFArray,
-  PDFDict,
-  PDFHexString,
-  PDFName,
-  PDFRef,
-  PDFStream,
-  PDFString,
-  PDFRawStream,
-} = require('pdf-lib/cjs/core');
-const CryptoJS = require('crypto-js');
+const { spawn } = require('node:child_process');
+const { PDFDocument, StandardFonts } = require('pdf-lib');
+const { PDFArray, PDFName, PDFRef, PDFStream } = require('pdf-lib/cjs/core');
 
 const app = require('../dist/app').default;
 const qbService = require('../dist/services/qb.service');
-
-const PASSWORD_PADDING = new Uint8Array([
-  0x28, 0xbf, 0x4e, 0x5e, 0x4e, 0x75, 0x8a, 0x41, 0x64, 0x00, 0x4e, 0x56, 0xff,
-  0xfa, 0x01, 0x08, 0x2e, 0x2e, 0x00, 0xb6, 0xd0, 0x68, 0x3e, 0x80, 0x2f, 0x0c,
-  0xa9, 0xfe, 0x64, 0x53, 0x69, 0x7a,
-]);
-
-const KEY_BYTES = 5;
-
-function wordArrayToUint8(wordArray) {
-  const byteArray = [];
-  for (let i = 0; i < wordArray.sigBytes; i += 1) {
-    const word = wordArray.words[Math.floor(i / 4)];
-    byteArray.push((word >> (24 - (i % 4) * 8)) & 0xff);
-  }
-  return Uint8Array.from(byteArray);
-}
-
-function md5Bytes(bytes) {
-  const hash = CryptoJS.MD5(CryptoJS.lib.WordArray.create(bytes, bytes.length));
-  return wordArrayToUint8(hash);
-}
-
-function padPassword(password) {
-  const output = new Uint8Array(32);
-  const length = Math.min(password.length, 32);
-  for (let i = 0; i < length; i += 1) {
-    const code = password.charCodeAt(i);
-    if (code > 0xff) {
-      throw new Error('Password contains one or more invalid characters.');
-    }
-    output[i] = code;
-  }
-  output.set(PASSWORD_PADDING.subarray(0, 32 - length), length);
-  return output;
-}
-
-function rc4(key, data) {
-  const s = new Uint8Array(256);
-  for (let i = 0; i < 256; i += 1) {
-    s[i] = i;
-  }
-  let j = 0;
-  for (let i = 0; i < 256; i += 1) {
-    const si = s[i];
-    const keyByte = key[i % key.length];
-    j = (j + si + keyByte) & 0xff;
-    const sj = s[j];
-    s[i] = sj;
-    s[j] = si;
-  }
-  const result = new Uint8Array(data.length);
-  let i = 0;
-  j = 0;
-  for (let idx = 0; idx < data.length; idx += 1) {
-    i = (i + 1) & 0xff;
-    const si = s[i];
-    j = (j + si) & 0xff;
-    const sj = s[j];
-    s[i] = sj;
-    s[j] = si;
-    const k = s[(s[i] + s[j]) & 0xff];
-    result[idx] = data[idx] ^ k;
-  }
-  return result;
-}
-
-function objectEncryptionKey(baseKey, ref) {
-  const buffer = new Uint8Array(baseKey.length + 5);
-  buffer.set(baseKey, 0);
-  buffer[baseKey.length + 0] = ref.objectNumber & 0xff;
-  buffer[baseKey.length + 1] = (ref.objectNumber >> 8) & 0xff;
-  buffer[baseKey.length + 2] = (ref.objectNumber >> 16) & 0xff;
-  buffer[baseKey.length + 3] = ref.generationNumber & 0xff;
-  buffer[baseKey.length + 4] = (ref.generationNumber >> 8) & 0xff;
-  return md5Bytes(buffer).subarray(0, KEY_BYTES);
-}
-
-function applyCipherToObject(object, ref, key, context, visited) {
-  if (visited.has(object)) return object;
-  visited.add(object);
-
-  const cipher = (input) => rc4(key, input);
-
-  if (object instanceof PDFString || object instanceof PDFHexString) {
-    const bytes = object.asBytes();
-    return PDFHexString.of(Buffer.from(cipher(bytes)).toString('hex'));
-  }
-
-  if (object instanceof PDFStream) {
-    const encrypted = cipher(object.getContents());
-    const dict = object.dict.clone(context);
-    return PDFRawStream.of(dict, encrypted);
-  }
-
-  if (object instanceof PDFDict) {
-    for (const [keyName, value] of object.entries()) {
-      if (value instanceof PDFRef) continue;
-      const updated = applyCipherToObject(value, ref, key, context, visited);
-      if (updated !== value) object.set(keyName, updated);
-    }
-    return object;
-  }
-
-  if (object instanceof PDFArray) {
-    for (let idx = 0; idx < object.size(); idx += 1) {
-      const value = object.get(idx);
-      if (value instanceof PDFRef) continue;
-      const updated = applyCipherToObject(value, ref, key, context, visited);
-      if (updated !== value) object.set(idx, updated);
-    }
-    return object;
-  }
-
-  return object;
-}
-
-async function decryptPdfWithPassword(encryptedBytes, password) {
-  const pdfDoc = await PDFDocument.load(encryptedBytes, { ignoreEncryption: true });
-  const encryptRef = pdfDoc.context.trailerInfo.Encrypt;
-  if (!encryptRef) throw new Error('Document is not encrypted');
-  const encryptDict = pdfDoc.context.lookup(encryptRef, PDFDict);
-
-  const ownerHex = pdfDoc.context.lookup(encryptDict.get(PDFName.of('O')), PDFHexString).asString();
-  const userHex = pdfDoc.context.lookup(encryptDict.get(PDFName.of('U')), PDFHexString).asString();
-  const permissions = pdfDoc.context.lookup(encryptDict.get(PDFName.of('P'))).asNumber();
-  const ids = pdfDoc.context.lookup(pdfDoc.context.trailerInfo.ID, PDFArray);
-  const fileId = pdfDoc.context.lookup(ids.get(0), PDFHexString).asString();
-
-  const paddedUser = padPassword(password);
-  const ownerEntry = Buffer.from(ownerHex, 'hex');
-  const fileIdBytes = Buffer.from(fileId, 'hex');
-  const buffer = new Uint8Array(paddedUser.length + ownerEntry.length + 4 + fileIdBytes.length);
-  let offset = 0;
-  buffer.set(paddedUser, offset);
-  offset += paddedUser.length;
-  buffer.set(ownerEntry, offset);
-  offset += ownerEntry.length;
-  const view = new DataView(buffer.buffer, buffer.byteOffset + offset, 4);
-  view.setInt32(0, permissions, true);
-  offset += 4;
-  buffer.set(fileIdBytes, offset);
-
-  const encryptionKey = md5Bytes(buffer).subarray(0, KEY_BYTES);
-  const expectedUser = Buffer.from(userHex, 'hex');
-  const computedUser = Buffer.from(rc4(encryptionKey, PASSWORD_PADDING));
-  if (!expectedUser.equals(computedUser)) {
-    throw new Error('Invalid password');
-  }
-
-  const visited = new Set();
-  for (const [ref, object] of pdfDoc.context.enumerateIndirectObjects()) {
-    if (ref === encryptRef) continue;
-    const key = objectEncryptionKey(encryptionKey, ref);
-    const updated = applyCipherToObject(object, ref, key, pdfDoc.context, visited);
-    if (updated !== object) {
-      pdfDoc.context.assign(ref, updated);
-    }
-  }
-
-  pdfDoc.context.trailerInfo.Encrypt = undefined;
-
-  return pdfDoc.save({ useObjectStreams: false });
-}
 
 let server;
 let baseUrl;
@@ -246,14 +73,76 @@ async function requestMultipart(endpoint, formData, expectJson = true) {
   return { response, body };
 }
 
+function runQpdf(args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('qpdf', args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      ...options,
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    if (child.stdout) {
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString();
+      });
+    }
+
+    if (child.stderr) {
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+    }
+
+    child.once('error', reject);
+    child.once('close', (code) => {
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
+
+let cachedQpdfAvailability;
+
+async function hasQpdf() {
+  if (cachedQpdfAvailability !== undefined) {
+    return cachedQpdfAvailability;
+  }
+
+  try {
+    const result = await runQpdf(['--version']);
+    cachedQpdfAvailability = result.code === 0;
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      cachedQpdfAvailability = false;
+    } else {
+      throw error;
+    }
+  }
+
+  return cachedQpdfAvailability;
+}
+
 async function createSamplePdfBytes() {
   const pdfDocument = await PDFDocument.create();
-  pdfDocument.addPage([300, 300]);
-  const pdfBytes = await pdfDocument.save();
+  const page = pdfDocument.addPage([300, 300]);
+  const font = await pdfDocument.embedFont(StandardFonts.Helvetica);
+  page.drawText('Hello from sample PDF', {
+    x: 40,
+    y: 250,
+    size: 24,
+    font,
+  });
+  const pdfBytes = await pdfDocument.save({ useObjectStreams: false });
   return Buffer.from(pdfBytes);
 }
 
-test('locks an uploaded PDF document and returns the encrypted file', async () => {
+test('locks an uploaded PDF document and returns the encrypted file', async (t) => {
+  if (!(await hasQpdf())) {
+    t.skip('qpdf binary is not available in the test environment');
+    return;
+  }
+
   const pdfBytes = await createSamplePdfBytes();
   const formData = new FormData();
   formData.append('document', new Blob([pdfBytes], { type: 'application/pdf' }), 'download.pdf');
@@ -275,12 +164,69 @@ test('locks an uploaded PDF document and returns the encrypted file', async () =
   const lockedBytes = Buffer.from(await response.arrayBuffer());
   assert.ok(lockedBytes.length > 0);
 
-  // Decrypt helper verifies passwords
-  await assert.rejects(async () => decryptPdfWithPassword(lockedBytes, 'incorrect'));
+  const lockedPath = path.join(os.tmpdir(), `locked-${Date.now()}.pdf`);
+  const decryptedPath = path.join(os.tmpdir(), `decrypted-${Date.now()}.pdf`);
+  await fs.writeFile(lockedPath, lockedBytes);
 
-  const decrypted = await decryptPdfWithPassword(lockedBytes, 'download-secret');
-  const unlockedDoc = await PDFDocument.load(decrypted);
-  assert.equal(unlockedDoc.getPageCount(), 1);
+  try {
+    const validCheck = await runQpdf(['--password=download-secret', '--check', lockedPath]);
+    assert.equal(
+      validCheck.code,
+      0,
+      `qpdf validation failed: ${validCheck.stderr || validCheck.stdout}`
+    );
+
+    const invalidCheck = await runQpdf(['--password=incorrect', '--check', lockedPath]);
+    assert.notEqual(invalidCheck.code, 0);
+
+    const decryptResult = await runQpdf([
+      '--password=download-secret',
+      '--decrypt',
+      lockedPath,
+      decryptedPath,
+    ]);
+    assert.equal(
+      decryptResult.code,
+      0,
+      `qpdf decrypt failed: ${decryptResult.stderr || decryptResult.stdout}`
+    );
+
+    const decryptedBytes = await fs.readFile(decryptedPath);
+    const unlockedDoc = await PDFDocument.load(decryptedBytes);
+    assert.equal(unlockedDoc.getPageCount(), 1);
+
+    const page = unlockedDoc.getPage(0);
+    const contents = page.node.get(PDFName.of('Contents'));
+    const streams = [];
+
+    const collectStreams = (entry) => {
+      if (!entry) return;
+      if (entry instanceof PDFRef) {
+        collectStreams(unlockedDoc.context.lookup(entry));
+        return;
+      }
+      if (entry instanceof PDFArray) {
+        for (let idx = 0; idx < entry.size(); idx += 1) {
+          collectStreams(entry.get(idx));
+        }
+        return;
+      }
+      if (entry instanceof PDFStream) {
+        streams.push(entry);
+      }
+    };
+
+    collectStreams(contents);
+    assert.notEqual(streams.length, 0);
+
+    for (const stream of streams) {
+      const streamBytes = stream.getContents();
+      assert.ok(streamBytes.length > 0);
+    }
+  } finally {
+    await fs.unlink(lockedPath).catch(() => {});
+    await fs.unlink(decryptedPath).catch(() => {});
+  }
 });
 
 test('requires a document file when locking', async () => {
