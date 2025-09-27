@@ -5,9 +5,184 @@ const path = require('path');
 const fs = require('fs/promises');
 const { Blob } = require('node:buffer');
 const { PDFDocument } = require('pdf-lib');
+const {
+  PDFArray,
+  PDFDict,
+  PDFHexString,
+  PDFName,
+  PDFRef,
+  PDFStream,
+  PDFString,
+  PDFRawStream,
+} = require('pdf-lib/cjs/core');
+const CryptoJS = require('crypto-js');
 
 const app = require('../dist/app').default;
 const qbService = require('../dist/services/qb.service');
+
+const PASSWORD_PADDING = new Uint8Array([
+  0x28, 0xbf, 0x4e, 0x5e, 0x4e, 0x75, 0x8a, 0x41, 0x64, 0x00, 0x4e, 0x56, 0xff,
+  0xfa, 0x01, 0x08, 0x2e, 0x2e, 0x00, 0xb6, 0xd0, 0x68, 0x3e, 0x80, 0x2f, 0x0c,
+  0xa9, 0xfe, 0x64, 0x53, 0x69, 0x7a,
+]);
+
+const KEY_BYTES = 5;
+
+function wordArrayToUint8(wordArray) {
+  const byteArray = [];
+  for (let i = 0; i < wordArray.sigBytes; i += 1) {
+    const word = wordArray.words[Math.floor(i / 4)];
+    byteArray.push((word >> (24 - (i % 4) * 8)) & 0xff);
+  }
+  return Uint8Array.from(byteArray);
+}
+
+function md5Bytes(bytes) {
+  const hash = CryptoJS.MD5(CryptoJS.lib.WordArray.create(bytes, bytes.length));
+  return wordArrayToUint8(hash);
+}
+
+function padPassword(password) {
+  const output = new Uint8Array(32);
+  const length = Math.min(password.length, 32);
+  for (let i = 0; i < length; i += 1) {
+    const code = password.charCodeAt(i);
+    if (code > 0xff) {
+      throw new Error('Password contains one or more invalid characters.');
+    }
+    output[i] = code;
+  }
+  output.set(PASSWORD_PADDING.subarray(0, 32 - length), length);
+  return output;
+}
+
+function rc4(key, data) {
+  const s = new Uint8Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    s[i] = i;
+  }
+  let j = 0;
+  for (let i = 0; i < 256; i += 1) {
+    const si = s[i];
+    const keyByte = key[i % key.length];
+    j = (j + si + keyByte) & 0xff;
+    const sj = s[j];
+    s[i] = sj;
+    s[j] = si;
+  }
+  const result = new Uint8Array(data.length);
+  let i = 0;
+  j = 0;
+  for (let idx = 0; idx < data.length; idx += 1) {
+    i = (i + 1) & 0xff;
+    const si = s[i];
+    j = (j + si) & 0xff;
+    const sj = s[j];
+    s[i] = sj;
+    s[j] = si;
+    const k = s[(s[i] + s[j]) & 0xff];
+    result[idx] = data[idx] ^ k;
+  }
+  return result;
+}
+
+function objectEncryptionKey(baseKey, ref) {
+  const buffer = new Uint8Array(baseKey.length + 5);
+  buffer.set(baseKey, 0);
+  buffer[baseKey.length + 0] = ref.objectNumber & 0xff;
+  buffer[baseKey.length + 1] = (ref.objectNumber >> 8) & 0xff;
+  buffer[baseKey.length + 2] = (ref.objectNumber >> 16) & 0xff;
+  buffer[baseKey.length + 3] = ref.generationNumber & 0xff;
+  buffer[baseKey.length + 4] = (ref.generationNumber >> 8) & 0xff;
+  return md5Bytes(buffer).subarray(0, KEY_BYTES);
+}
+
+function applyCipherToObject(object, ref, key, context, visited) {
+  if (visited.has(object)) return object;
+  visited.add(object);
+
+  const cipher = (input) => rc4(key, input);
+
+  if (object instanceof PDFString || object instanceof PDFHexString) {
+    const bytes = object.asBytes();
+    return PDFHexString.of(Buffer.from(cipher(bytes)).toString('hex'));
+  }
+
+  if (object instanceof PDFStream) {
+    const encrypted = cipher(object.getContents());
+    const dict = object.dict.clone(context);
+    return PDFRawStream.of(dict, encrypted);
+  }
+
+  if (object instanceof PDFDict) {
+    for (const [keyName, value] of object.entries()) {
+      if (value instanceof PDFRef) continue;
+      const updated = applyCipherToObject(value, ref, key, context, visited);
+      if (updated !== value) object.set(keyName, updated);
+    }
+    return object;
+  }
+
+  if (object instanceof PDFArray) {
+    for (let idx = 0; idx < object.size(); idx += 1) {
+      const value = object.get(idx);
+      if (value instanceof PDFRef) continue;
+      const updated = applyCipherToObject(value, ref, key, context, visited);
+      if (updated !== value) object.set(idx, updated);
+    }
+    return object;
+  }
+
+  return object;
+}
+
+async function decryptPdfWithPassword(encryptedBytes, password) {
+  const pdfDoc = await PDFDocument.load(encryptedBytes, { ignoreEncryption: true });
+  const encryptRef = pdfDoc.context.trailerInfo.Encrypt;
+  if (!encryptRef) throw new Error('Document is not encrypted');
+  const encryptDict = pdfDoc.context.lookup(encryptRef, PDFDict);
+
+  const ownerHex = pdfDoc.context.lookup(encryptDict.get(PDFName.of('O')), PDFHexString).asString();
+  const userHex = pdfDoc.context.lookup(encryptDict.get(PDFName.of('U')), PDFHexString).asString();
+  const permissions = pdfDoc.context.lookup(encryptDict.get(PDFName.of('P'))).asNumber();
+  const ids = pdfDoc.context.lookup(pdfDoc.context.trailerInfo.ID, PDFArray);
+  const fileId = pdfDoc.context.lookup(ids.get(0), PDFHexString).asString();
+
+  const paddedUser = padPassword(password);
+  const ownerEntry = Buffer.from(ownerHex, 'hex');
+  const fileIdBytes = Buffer.from(fileId, 'hex');
+  const buffer = new Uint8Array(paddedUser.length + ownerEntry.length + 4 + fileIdBytes.length);
+  let offset = 0;
+  buffer.set(paddedUser, offset);
+  offset += paddedUser.length;
+  buffer.set(ownerEntry, offset);
+  offset += ownerEntry.length;
+  const view = new DataView(buffer.buffer, buffer.byteOffset + offset, 4);
+  view.setInt32(0, permissions, true);
+  offset += 4;
+  buffer.set(fileIdBytes, offset);
+
+  const encryptionKey = md5Bytes(buffer).subarray(0, KEY_BYTES);
+  const expectedUser = Buffer.from(userHex, 'hex');
+  const computedUser = Buffer.from(rc4(encryptionKey, PASSWORD_PADDING));
+  if (!expectedUser.equals(computedUser)) {
+    throw new Error('Invalid password');
+  }
+
+  const visited = new Set();
+  for (const [ref, object] of pdfDoc.context.enumerateIndirectObjects()) {
+    if (ref === encryptRef) continue;
+    const key = objectEncryptionKey(encryptionKey, ref);
+    const updated = applyCipherToObject(object, ref, key, pdfDoc.context, visited);
+    if (updated !== object) {
+      pdfDoc.context.assign(ref, updated);
+    }
+  }
+
+  pdfDoc.context.trailerInfo.Encrypt = undefined;
+
+  return pdfDoc.save({ useObjectStreams: false });
+}
 
 let server;
 let baseUrl;
@@ -100,7 +275,11 @@ test('locks an uploaded PDF document and returns the encrypted file', async () =
   const lockedBytes = Buffer.from(await response.arrayBuffer());
   assert.ok(lockedBytes.length > 0);
 
-  const unlockedDoc = await PDFDocument.load(lockedBytes, { password: 'download-secret' });
+  // Decrypt helper verifies passwords
+  await assert.rejects(async () => decryptPdfWithPassword(lockedBytes, 'incorrect'));
+
+  const decrypted = await decryptPdfWithPassword(lockedBytes, 'download-secret');
+  const unlockedDoc = await PDFDocument.load(decrypted);
   assert.equal(unlockedDoc.getPageCount(), 1);
 });
 
