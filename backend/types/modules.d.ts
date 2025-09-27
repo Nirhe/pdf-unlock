@@ -73,6 +73,29 @@ declare module 'fs/promises' {
   export const unlink: (path: string) => Promise<void>
 }
 
+declare module 'child_process' {
+  interface SpawnStdio {
+    setEncoding: (encoding: string) => void
+    on: (event: 'data', listener: (chunk: string) => void) => void
+  }
+
+  interface SpawnedProcess {
+    stderr?: SpawnStdio | null
+    once(event: 'error', listener: (error: Error) => void): SpawnedProcess
+    once(event: 'close', listener: (code: number | null, signal?: string | null) => void): SpawnedProcess
+  }
+
+  interface SpawnOptions {
+    stdio?: any
+  }
+
+  export function spawn(
+    command: string,
+    args?: ReadonlyArray<string>,
+    options?: SpawnOptions,
+  ): SpawnedProcess
+}
+
 declare module 'os' {
   export function tmpdir(): string
 }

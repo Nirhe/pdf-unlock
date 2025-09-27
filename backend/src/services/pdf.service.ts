@@ -1,29 +1,51 @@
 // src/services/pdf.service.ts
+import { spawn } from 'child_process';
 import { promises as fileSystem } from 'fs';
-import { PDFDocument } from 'pdf-lib';
-import type { PDFContext } from 'pdf-lib/cjs/core';
 
-import { applyStandardEncryption } from '../utils/pdfEncryption';
+async function runQpdfEncryption(
+  inputPath: string,
+  outputPath: string,
+  userPassword: string,
+  ownerPassword: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const qpdf = spawn(
+      'qpdf',
+      ['--encrypt', userPassword, ownerPassword, '40', '--', inputPath, outputPath],
+      {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      },
+    );
+
+    let stderr = '';
+    if (qpdf.stderr) {
+      qpdf.stderr.setEncoding('utf8');
+      qpdf.stderr.on('data', (chunk: string) => {
+        stderr += chunk;
+      });
+    }
+
+    qpdf.once('error', (error: Error) => {
+      reject(error);
+    });
+
+    qpdf.once('close', (code: number | null) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        const message = stderr.trim();
+        const error = new Error(
+          message ? `qpdf exited with code ${code}: ${message}` : `qpdf exited with code ${code}`,
+        );
+        reject(error);
+      }
+    });
+  });
+}
 
 export async function lockPdf(inputPath: string, outputPath: string, password: string) {
-  const pdfBytes = await fileSystem.readFile(inputPath);
-  const pdfDocument = await PDFDocument.load(pdfBytes, { updateMetadata: false });
-
-  const documentContext = (pdfDocument as unknown as { context: PDFContext }).context;
-
-  applyStandardEncryption(documentContext, {
-    userPassword: password,
-    ownerPassword: password,
-    permissions: {
-      printing: 'highResolution',
-      modifying: false,
-      copying: false,
-    },
-  });
-
-  const lockedPdfBytes = await pdfDocument.save({ useObjectStreams: false });
-
-  await fileSystem.writeFile(outputPath, lockedPdfBytes);
+  await fileSystem.access(inputPath);
+  await runQpdfEncryption(inputPath, outputPath, password, password);
 }
 
 export async function unlockPdf(inputPath: string, outputPath: string) {

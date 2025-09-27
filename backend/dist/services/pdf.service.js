@@ -3,24 +3,38 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.lockPdf = lockPdf;
 exports.unlockPdf = unlockPdf;
 // src/services/pdf.service.ts
+const child_process_1 = require("child_process");
 const fs_1 = require("fs");
-const pdf_lib_1 = require("pdf-lib");
-const pdfEncryption_1 = require("../utils/pdfEncryption");
-async function lockPdf(inputPath, outputPath, password) {
-    const pdfBytes = await fs_1.promises.readFile(inputPath);
-    const pdfDocument = await pdf_lib_1.PDFDocument.load(pdfBytes, { updateMetadata: false });
-    const documentContext = pdfDocument.context;
-    (0, pdfEncryption_1.applyStandardEncryption)(documentContext, {
-        userPassword: password,
-        ownerPassword: password,
-        permissions: {
-            printing: 'highResolution',
-            modifying: false,
-            copying: false,
-        },
+async function runQpdfEncryption(inputPath, outputPath, userPassword, ownerPassword) {
+    return new Promise((resolve, reject) => {
+        const qpdf = (0, child_process_1.spawn)('qpdf', ['--encrypt', userPassword, ownerPassword, '40', '--', inputPath, outputPath], {
+            stdio: ['ignore', 'ignore', 'pipe'],
+        });
+        let stderr = '';
+        if (qpdf.stderr) {
+            qpdf.stderr.setEncoding('utf8');
+            qpdf.stderr.on('data', (chunk) => {
+                stderr += chunk;
+            });
+        }
+        qpdf.once('error', (error) => {
+            reject(error);
+        });
+        qpdf.once('close', (code) => {
+            if (code === 0) {
+                resolve();
+            }
+            else {
+                const message = stderr.trim();
+                const error = new Error(message ? `qpdf exited with code ${code}: ${message}` : `qpdf exited with code ${code}`);
+                reject(error);
+            }
+        });
     });
-    const lockedPdfBytes = await pdfDocument.save({ useObjectStreams: false });
-    await fs_1.promises.writeFile(outputPath, lockedPdfBytes);
+}
+async function lockPdf(inputPath, outputPath, password) {
+    await fs_1.promises.access(inputPath);
+    await runQpdfEncryption(inputPath, outputPath, password, password);
 }
 async function unlockPdf(inputPath, outputPath) {
     await fs_1.promises.access(inputPath);

@@ -1,3 +1,9 @@
+# Backend
+
+## Runtime requirements
+
+- `qpdf` must be available in the runtime environment. The provided Docker image installs it automatically via `apk add --no-cache qpdf`. Install the package from your platform's package manager when running the backend outside of Docker.
+
 sequenceDiagram
     autonumber
     actor U as User
