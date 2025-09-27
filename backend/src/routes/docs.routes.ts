@@ -95,6 +95,11 @@ router.post('/lock', (req, res) => {
       return res.status(200).send(lockedBytes);
     } catch (error) {
       if (!responded) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to lock document request', {
+          message: (error as Error).message,
+          stack: (error as Error).stack,
+        });
         await cleanup({ removeOutput: true });
         return res.status(500).json({ error: 'Unable to lock document' });
       }

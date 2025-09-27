@@ -26,6 +26,12 @@ async function runQpdfEncryption(
     }
 
     qpdf.once('error', (error: Error) => {
+      // eslint-disable-next-line no-console
+      console.error('qpdf process error event', {
+        stderr: stderr.trim() || undefined,
+        stack: error.stack,
+        message: error.message,
+      });
       reject(error);
     });
 
@@ -37,6 +43,13 @@ async function runQpdfEncryption(
         const error = new Error(
           message ? `qpdf exited with code ${code}: ${message}` : `qpdf exited with code ${code}`,
         );
+        // eslint-disable-next-line no-console
+        console.error('qpdf process exited with non-zero code', {
+          code,
+          stderr: message || undefined,
+          stack: error.stack,
+          message: error.message,
+        });
         reject(error);
       }
     });
