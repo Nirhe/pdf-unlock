@@ -1,6 +1,10 @@
 // src/services/pdf.service.ts
 import { spawn } from 'child_process';
 import { promises as fileSystem } from 'fs';
+import path from 'path';
+
+const bundledQpdfPath = path.join(__dirname, '../bin/qpdf-linux-x64');
+const resolvedQpdfPath = process.env.QPDF_PATH?.trim() || bundledQpdfPath;
 
 async function runQpdfEncryption(
   inputPath: string,
@@ -10,7 +14,7 @@ async function runQpdfEncryption(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const qpdf = spawn(
-      'qpdf',
+      resolvedQpdfPath,
       ['--encrypt', userPassword, ownerPassword, '40', '--', inputPath, outputPath],
       {
         stdio: ['ignore', 'ignore', 'pipe'],
