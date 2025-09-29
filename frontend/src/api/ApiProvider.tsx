@@ -1,6 +1,7 @@
 import type { FC, ReactNode } from 'react'
 import { useCallback, useMemo, useReducer } from 'react'
 import { createApiClient, type CreateApiClientOptions } from './client.js'
+import { resolveApiBaseUrl } from '../config/resolveApiBaseUrl.js'
 import { ApiContext, type ApiContextValue } from './context.js'
 import { apiStateReducer } from './state.js'
 
@@ -12,7 +13,7 @@ export type ApiProviderProps = {
 
 export const ApiProvider: FC<ApiProviderProps> = ({
   children,
-  baseUrl = '/api',
+  baseUrl = resolveApiBaseUrl(),
   withCredentials,
 }) => {
   const client = useMemo(

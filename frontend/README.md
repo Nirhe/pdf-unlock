@@ -14,7 +14,7 @@ By default the development server will proxy API calls to the backend target def
 
 ## Deployment notes
 
-The production site is deployed on Vercel. The `vercel.json` file configures rewrites so that requests to `/api/*` are forwarded to the backend deployment. Because Vercel rewrites happen at the edge, you must ensure that the destination host always resolves correctly.
+The production site is deployed on Vercel. The `vercel.json` file configures rewrites so that requests to `/api/*` are forwarded to the backend deployment. Because Vercel rewrites happen at the edge, you must ensure that the destination host always resolves correctly. When the `PDF_UNLOCK_BACKEND_HOST` or `VITE_API_BASE_URL` environment variables are not set, the frontend now falls back to `https://pdf-unlock-backend.vercel.app/api` so users can continue testing the locking flow while the configuration is repaired.
 
 When rolling out a new backend deployment, update the `PDF_UNLOCK_BACKEND_HOST` environment variable in the frontend project before shipping. This avoids a window where the rewrite points at an inactive host.
 
