@@ -9,9 +9,14 @@ export const createApiClient = (
   options: CreateApiClientOptions = {},
 ): AxiosInstance => {
   const { baseUrl = '/api', withCredentials = false } = options
+  const sanitizedBaseUrl = baseUrl.trim()
+
+  if (!sanitizedBaseUrl) {
+    throw new Error('API client base URL cannot be empty. Check the frontend configuration.')
+  }
 
   return axios.create({
-    baseURL: baseUrl,
+    baseURL: sanitizedBaseUrl,
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',

@@ -127,4 +127,11 @@ describe('createApiClient', () => {
     assert.equal(client.defaults.withCredentials, true)
     assert.equal(client.defaults.headers['Content-Type'], 'application/json')
   })
+
+  it('throws when provided an empty base URL', () => {
+    assert.throws(
+      () => createApiClient({ baseUrl: '   ' }),
+      /base url cannot be empty/i,
+    )
+  })
 })
