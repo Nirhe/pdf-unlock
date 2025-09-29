@@ -1,13 +1,19 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.lockPdf = lockPdf;
 exports.unlockPdf = unlockPdf;
 // src/services/pdf.service.ts
 const child_process_1 = require("child_process");
 const fs_1 = require("fs");
+const path_1 = __importDefault(require("path"));
+const bundledQpdfPath = path_1.default.join(__dirname, '../bin/qpdf-linux-x64');
+const resolvedQpdfPath = process.env.QPDF_PATH?.trim() || bundledQpdfPath;
 async function runQpdfEncryption(inputPath, outputPath, userPassword, ownerPassword) {
     return new Promise((resolve, reject) => {
-        const qpdf = (0, child_process_1.spawn)('qpdf', ['--encrypt', userPassword, ownerPassword, '40', '--', inputPath, outputPath], {
+        const qpdf = (0, child_process_1.spawn)(resolvedQpdfPath, ['--encrypt', userPassword, ownerPassword, '40', '--', inputPath, outputPath], {
             stdio: ['ignore', 'ignore', 'pipe'],
         });
         let stderr = '';
@@ -18,6 +24,12 @@ async function runQpdfEncryption(inputPath, outputPath, userPassword, ownerPassw
             });
         }
         qpdf.once('error', (error) => {
+            // eslint-disable-next-line no-console
+            console.error('qpdf process error event', {
+                stderr: stderr.trim() || undefined,
+                stack: error.stack,
+                message: error.message,
+            });
             reject(error);
         });
         qpdf.once('close', (code) => {
@@ -27,6 +39,13 @@ async function runQpdfEncryption(inputPath, outputPath, userPassword, ownerPassw
             else {
                 const message = stderr.trim();
                 const error = new Error(message ? `qpdf exited with code ${code}: ${message}` : `qpdf exited with code ${code}`);
+                // eslint-disable-next-line no-console
+                console.error('qpdf process exited with non-zero code', {
+                    code,
+                    stderr: message || undefined,
+                    stack: error.stack,
+                    message: error.message,
+                });
                 reject(error);
             }
         });

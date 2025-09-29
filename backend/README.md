@@ -2,7 +2,7 @@
 
 ## Runtime requirements
 
-- `qpdf` must be available in the runtime environment. The provided Docker image installs it automatically via `apk add --no-cache qpdf`. Install the package from your platform's package manager when running the backend outside of Docker.
+- `qpdf` must be available in the runtime environment. The repository includes a bundled Linux binary at `bin/qpdf-linux-x64` that is copied into the build output under `dist/bin`. Set the `QPDF_PATH` environment variable if you prefer to point at a different executable (for example when running on macOS or Windows).
 
 sequenceDiagram
     autonumber
