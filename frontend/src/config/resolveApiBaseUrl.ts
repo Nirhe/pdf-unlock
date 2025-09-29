@@ -3,9 +3,13 @@ const DEVELOPMENT_FALLBACK_API_BASE_URL = '/api'
 
 const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/, '')
 
+type ProcessLike = {
+  env?: Record<string, string | undefined>
+}
+
 const readEnvValue = (key: string): string | undefined => {
   if (typeof import.meta !== 'undefined') {
-    const env = (import.meta as { env?: Record<string, unknown> }).env
+    const env = (import.meta as ImportMeta & { env?: Record<string, unknown> }).env
     if (env) {
       const value = env[key]
       if (typeof value === 'string') {
@@ -14,8 +18,9 @@ const readEnvValue = (key: string): string | undefined => {
     }
   }
 
-  if (typeof process !== 'undefined' && typeof process.env !== 'undefined') {
-    const value = process.env[key]
+  const processEnv = (globalThis as typeof globalThis & { process?: ProcessLike }).process?.env
+  if (processEnv) {
+    const value = processEnv[key]
     if (typeof value === 'string') {
       return value
     }
@@ -37,7 +42,7 @@ const sanitizeUrl = (value: string | undefined): string | null => {
   return trimTrailingSlashes(trimmed)
 }
 
-const sanitizeHost = (host: string): string | null => {
+const sanitizeHost = (host: string | undefined): string | null => {
   if (!host) {
     return null
   }
@@ -59,10 +64,9 @@ const isProductionEnvironment = (): boolean => {
     }
   }
 
-  if (typeof process !== 'undefined' && typeof process.env !== 'undefined') {
-    if (process.env.NODE_ENV === 'production') {
-      return true
-    }
+  const processEnv = (globalThis as typeof globalThis & { process?: ProcessLike }).process?.env
+  if (processEnv && processEnv.NODE_ENV === 'production') {
+    return true
   }
 
   return false
