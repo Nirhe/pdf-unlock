@@ -47,14 +47,25 @@ const sanitizeHost = (host: string | undefined): string | null => {
     return null
   }
 
-  const withoutProtocol = host.replace(/^https?:\/\//i, '')
-  const trimmed = withoutProtocol.trim()
-
+  const trimmed = host.trim()
   if (!trimmed) {
     return null
   }
 
-  return trimmed.replace(/\/+$/, '')
+  const withoutProtocol = trimmed.replace(/^https?:\/\//i, '')
+  if (!withoutProtocol) {
+    return null
+  }
+
+  const withoutQueryOrFragment = withoutProtocol.replace(/[?#].*$/, '')
+  const withoutPath = withoutQueryOrFragment.split('/')[0]
+  const sanitized = withoutPath.trim()
+
+  if (!sanitized) {
+    return null
+  }
+
+  return sanitized.replace(/\/+$/, '')
 }
 
 const isProductionEnvironment = (): boolean => {
