@@ -62,6 +62,14 @@ describe('resolveApiBaseUrl', () => {
     assert.equal(resolveApiBaseUrl(), 'https://custom-backend.vercel.app/api')
   })
 
+  it('ignores protocols and paths when sanitizing the backend host', async () => {
+    setEnvValue('PDF_UNLOCK_BACKEND_HOST', ' https://custom-backend.vercel.app/api ')
+
+    const resolveApiBaseUrl = await loadResolver()
+
+    assert.equal(resolveApiBaseUrl(), 'https://custom-backend.vercel.app/api')
+  })
+
   it('falls back to the production default when NODE_ENV is production', async () => {
     setEnvValue('NODE_ENV', 'production')
 
