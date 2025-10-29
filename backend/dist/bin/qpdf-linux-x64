@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if command -v qpdf >/dev/null 2>&1; then
+  exec "$(command -v qpdf)" "$@"
+fi
+cat >&2 <<'MSG'
+The bundled qpdf binary placeholder was invoked, but no system qpdf is available.
+Replace backend/bin/qpdf-linux-x64 with a real precompiled qpdf binary for
+offline deployments or ensure qpdf is installed on the runtime PATH.
+MSG
+exit 127
