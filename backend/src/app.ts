@@ -8,10 +8,59 @@ import docsRouter from './routes/docs.routes';
 import emailRouter from './routes/email.routes';
 import quickBooksRouter from './routes/qb.routes';
 
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://pdf-unlock.vercel.app',
+  'https://www.pdf-unlock.vercel.app',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+
+const normalizeOrigin = (origin: string): string => origin.replace(/\/+$/, '').toLowerCase();
+
+const parseAllowedOrigins = (): string[] => {
+  const raw = process.env.CORS_ALLOWED_ORIGINS;
+  if (!raw) {
+    return DEFAULT_ALLOWED_ORIGINS;
+  }
+
+  const origins = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  if (origins.length === 0) {
+    return DEFAULT_ALLOWED_ORIGINS;
+  }
+
+  return origins;
+};
+
+const allowedOrigins = parseAllowedOrigins().map(normalizeOrigin);
+
+type OriginCallback = (err: Error | null, allow?: boolean) => void;
+
+const corsOptions = {
+  origin(origin: string | undefined, callback: OriginCallback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    const normalized = normalizeOrigin(origin);
+    const isAllowed = allowedOrigins.includes(normalized) || allowedOrigins.includes('*');
+
+    callback(null, isAllowed);
+  },
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+  exposedHeaders: ['Content-Disposition'],
+  optionsSuccessStatus: 204,
+};
+
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(morgan('dev'));
 

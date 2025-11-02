@@ -11,9 +11,46 @@ const swagger_1 = require("./swagger");
 const docs_routes_1 = __importDefault(require("./routes/docs.routes"));
 const email_routes_1 = __importDefault(require("./routes/email.routes"));
 const qb_routes_1 = __importDefault(require("./routes/qb.routes"));
+const DEFAULT_ALLOWED_ORIGINS = [
+    'https://pdf-unlock.vercel.app',
+    'https://www.pdf-unlock.vercel.app',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+];
+const normalizeOrigin = (origin) => origin.replace(/\/+$/, '').toLowerCase();
+const parseAllowedOrigins = () => {
+    const raw = process.env.CORS_ALLOWED_ORIGINS;
+    if (!raw) {
+        return DEFAULT_ALLOWED_ORIGINS;
+    }
+    const origins = raw
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+    if (origins.length === 0) {
+        return DEFAULT_ALLOWED_ORIGINS;
+    }
+    return origins;
+};
+const allowedOrigins = parseAllowedOrigins().map(normalizeOrigin);
+const corsOptions = {
+    origin(origin, callback) {
+        if (!origin) {
+            callback(null, true);
+            return;
+        }
+        const normalized = normalizeOrigin(origin);
+        const isAllowed = allowedOrigins.includes(normalized) || allowedOrigins.includes('*');
+        callback(null, isAllowed);
+    },
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+    exposedHeaders: ['Content-Disposition'],
+    optionsSuccessStatus: 204,
+};
 const app = (0, express_1.default)();
 // Middleware
-app.use((0, cors_1.default)());
+app.use((0, cors_1.default)(corsOptions));
 app.use(express_1.default.json());
 app.use((0, morgan_1.default)('dev'));
 // Extra request logger
