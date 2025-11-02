@@ -18,6 +18,12 @@ async function runQpdfEncryption(inputPath, outputPath, userPassword, ownerPassw
             });
         }
         qpdf.once('error', (error) => {
+            // eslint-disable-next-line no-console
+            console.error('qpdf process error event', {
+                stderr: stderr.trim() || undefined,
+                stack: error.stack,
+                message: error.message,
+            });
             reject(error);
         });
         qpdf.once('close', (code) => {
@@ -27,6 +33,13 @@ async function runQpdfEncryption(inputPath, outputPath, userPassword, ownerPassw
             else {
                 const message = stderr.trim();
                 const error = new Error(message ? `qpdf exited with code ${code}: ${message}` : `qpdf exited with code ${code}`);
+                // eslint-disable-next-line no-console
+                console.error('qpdf process exited with non-zero code', {
+                    code,
+                    stderr: message || undefined,
+                    stack: error.stack,
+                    message: error.message,
+                });
                 reject(error);
             }
         });

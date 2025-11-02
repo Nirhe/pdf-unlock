@@ -11,9 +11,77 @@ const swagger_1 = require("./swagger");
 const docs_routes_1 = __importDefault(require("./routes/docs.routes"));
 const email_routes_1 = __importDefault(require("./routes/email.routes"));
 const qb_routes_1 = __importDefault(require("./routes/qb.routes"));
+const DEFAULT_ALLOWED_ORIGINS = [
+    'https://pdf-unlock.vercel.app',
+    'https://www.pdf-unlock.vercel.app',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+];
+const normalizeOrigin = (origin) => {
+    const trimmed = origin.trim().replace(/\/+$/, '');
+    const match = /^(https?:\/\/)([^/]+)$/i.exec(trimmed);
+    if (!match) {
+        return trimmed.toLowerCase();
+    }
+    const protocolRaw = match[1];
+    const hostRaw = match[2];
+    if (!protocolRaw || !hostRaw) {
+        return trimmed.toLowerCase();
+    }
+    const protocol = protocolRaw.toLowerCase();
+    let host = hostRaw.toLowerCase();
+    if (protocol === 'https://' && host.endsWith(':443')) {
+        host = host.slice(0, -4);
+    }
+    else if (protocol === 'http://' && host.endsWith(':80')) {
+        host = host.slice(0, -3);
+    }
+    return `${protocol}${host}`;
+};
+const parseAllowedOrigins = () => {
+    const raw = process.env.CORS_ALLOWED_ORIGINS;
+    if (!raw) {
+        return DEFAULT_ALLOWED_ORIGINS;
+    }
+    const origins = raw
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+    if (origins.length === 0) {
+        return DEFAULT_ALLOWED_ORIGINS;
+    }
+    return Array.from(new Set(origins));
+};
+const allowedOrigins = parseAllowedOrigins().map(normalizeOrigin);
+const corsOptions = {
+    origin(origin, callback) {
+        if (!origin) {
+            callback(null, true);
+            return;
+        }
+        const normalized = normalizeOrigin(origin);
+        const isAllowed = allowedOrigins.includes(normalized) || allowedOrigins.includes('*');
+        if (!isAllowed) {
+            // eslint-disable-next-line no-console
+            console.warn(`[CORS] Blocked origin ${origin}. Allowed origins: ${allowedOrigins.join(', ')}`);
+        }
+        callback(null, isAllowed);
+    },
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    exposedHeaders: ['Content-Disposition'],
+    optionsSuccessStatus: 204,
+};
 const app = (0, express_1.default)();
 // Middleware
-app.use((0, cors_1.default)());
+const corsMiddleware = (0, cors_1.default)(corsOptions);
+app.use(corsMiddleware);
+app.use((req, res, next) => {
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(204);
+        return;
+    }
+    next();
+});
 app.use(express_1.default.json());
 app.use((0, morgan_1.default)('dev'));
 // Extra request logger
