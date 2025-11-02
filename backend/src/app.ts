@@ -15,7 +15,31 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
 ];
 
-const normalizeOrigin = (origin: string): string => origin.replace(/\/+$/, '').toLowerCase();
+const normalizeOrigin = (origin: string): string => {
+  const trimmed = origin.trim().replace(/\/+$/, '');
+  const match = /^(https?:\/\/)([^/]+)$/i.exec(trimmed);
+
+  if (!match) {
+    return trimmed.toLowerCase();
+  }
+
+  const protocolRaw = match[1];
+  const hostRaw = match[2];
+  if (!protocolRaw || !hostRaw) {
+    return trimmed.toLowerCase();
+  }
+
+  const protocol = protocolRaw.toLowerCase();
+  let host = hostRaw.toLowerCase();
+
+  if (protocol === 'https://' && host.endsWith(':443')) {
+    host = host.slice(0, -4);
+  } else if (protocol === 'http://' && host.endsWith(':80')) {
+    host = host.slice(0, -3);
+  }
+
+  return `${protocol}${host}`;
+};
 
 const parseAllowedOrigins = (): string[] => {
   const raw = process.env.CORS_ALLOWED_ORIGINS;
@@ -24,7 +48,7 @@ const parseAllowedOrigins = (): string[] => {
   }
 
   const origins = raw
-    .split(',')
+    .split(/[\s,]+/)
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
 
@@ -32,7 +56,7 @@ const parseAllowedOrigins = (): string[] => {
     return DEFAULT_ALLOWED_ORIGINS;
   }
 
-  return origins;
+  return Array.from(new Set(origins));
 };
 
 const allowedOrigins = parseAllowedOrigins().map(normalizeOrigin);
@@ -48,11 +72,14 @@ const corsOptions = {
 
     const normalized = normalizeOrigin(origin);
     const isAllowed = allowedOrigins.includes(normalized) || allowedOrigins.includes('*');
+    if (!isAllowed) {
+      // eslint-disable-next-line no-console
+      console.warn(`[CORS] Blocked origin ${origin}. Allowed origins: ${allowedOrigins.join(', ')}`);
+    }
 
     callback(null, isAllowed);
   },
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
   exposedHeaders: ['Content-Disposition'],
   optionsSuccessStatus: 204,
 };
@@ -60,7 +87,16 @@ const corsOptions = {
 const app = express();
 
 // Middleware
-app.use(cors(corsOptions));
+const corsMiddleware = cors(corsOptions);
+app.use(corsMiddleware);
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+
+  next();
+});
 app.use(express.json());
 app.use(morgan('dev'));
 

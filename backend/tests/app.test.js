@@ -8,7 +8,7 @@ const { spawn } = require('node:child_process');
 const { PDFDocument, StandardFonts } = require('pdf-lib');
 const { PDFArray, PDFName, PDFRef, PDFStream } = require('pdf-lib/cjs/core');
 
-process.env.CORS_ALLOWED_ORIGINS = 'https://pdf-unlock.vercel.app,http://localhost:5173';
+process.env.CORS_ALLOWED_ORIGINS = 'https://pdf-unlock.vercel.app\nhttp://localhost:5173';
 
 const app = require('../dist/app').default;
 const qbService = require('../dist/services/qb.service');
@@ -249,6 +249,19 @@ test('returns CORS headers for allowed origins', async () => {
 
   const exposedHeaders = response.headers.get('access-control-expose-headers') ?? '';
   assert.match(exposedHeaders, /content-disposition/i);
+});
+
+test('allows origins that include the default HTTPS port', async () => {
+  const response = await fetch(`${baseUrl}/api/docs/lock`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: 'https://pdf-unlock.vercel.app:443',
+      'Access-Control-Request-Method': 'POST',
+    },
+  });
+
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'https://pdf-unlock.vercel.app:443');
 });
 
 test('requires a document file when locking', async () => {
