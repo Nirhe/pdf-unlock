@@ -2,7 +2,15 @@
 
 ## Runtime requirements
 
-- `qpdf` must be available in the runtime environment. The provided Docker image installs it automatically via `apk add --no-cache qpdf`. Install the package from your platform's package manager when running the backend outside of Docker.
+### Local Development (Docker)
+- Docker and Docker Compose for local development
+- PostgreSQL database (provided via docker-compose)
+
+### Production (Vercel)
+- PostgreSQL database with connection pooling (e.g., Neon, Supabase)
+- No system dependencies required - uses `pdf-lib` for PDF encryption
+
+**Note:** The previous `qpdf` dependency has been replaced with `pdf-lib` for Vercel serverless compatibility.
 
 sequenceDiagram
     autonumber
