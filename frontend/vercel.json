@@ -2,10 +2,10 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://pdf-unlock-backend.vercel.app/api/$1"
+      "destination": "https://pdf-unlock.vercel.app/api/$1"
     }
   ],
   "env": {
-    "VITE_API_BACKEND_HOST": "pdf-unlock-backend.vercel.app"
+    "VITE_API_BACKEND_HOST": "pdf-unlock.vercel.app"
   }
 }
